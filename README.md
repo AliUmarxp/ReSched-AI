@@ -33,6 +33,24 @@ Demo login:
 admin / admin123
 ```
 
+## Search Keywords
+
+This repository is useful for students searching for:
+
+- Artificial Intelligence CCP project
+- AI lab project in Python
+- university timetable generator
+- university schedule optimizer
+- automatic timetable generation system
+- CSP timetable scheduling
+- constraint satisfaction problem project
+- backtracking scheduling project
+- heuristic search AI project
+- explainable AI scheduling system
+- FastAPI React timetable project
+- SQLite timetable management system
+- repeat-student aware timetable optimizer
+
 ## Why This Project Is Different
 
 Most basic timetable generators only check common conflicts such as teacher, room, or section clashes. ReSched AI adds academic rules and fairness logic that are closer to real university scheduling.
