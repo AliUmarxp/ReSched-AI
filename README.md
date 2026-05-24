@@ -12,6 +12,23 @@ Repeat-student aware university timetable optimizer for NIIT-style academic sche
 
 ## Run
 
+### Fresh Clone
+
+After cloning, the project can run locally without copying the SQLite database manually. The app creates `data/resched_ai.sqlite3` automatically from the included seed data when it starts.
+
+Requirements on the computer:
+
+- Python 3.10 or newer
+- Internet connection for first-time `pip install`
+
+One-command setup:
+
+```powershell
+.\RUN_PROJECT.ps1
+```
+
+Manual setup:
+
 Create a virtual environment if needed:
 
 ```powershell
@@ -36,6 +53,8 @@ Login:
 ```text
 admin / admin123
 ```
+
+The local SQLite database is generated automatically and is intentionally not committed to Git.
 
 ## What It Demonstrates
 
@@ -76,3 +95,12 @@ Generated local outputs such as SQLite database files and timetable ZIP exports 
 ## Repository Notes
 
 Raw SECTION-WISE DOCX import files are ignored because they may contain institution-specific academic records. The project keeps the cleaned extracted JSON/CSV dataset for demo and evaluation use.
+
+## Fresh Clone Checklist
+
+- Code: included
+- Cleaned demo dataset: included
+- Report and presentation: included
+- Local SQLite database: auto-generated on first run
+- Raw import documents: not included
+- Virtual environment: created locally by `RUN_PROJECT.ps1`
