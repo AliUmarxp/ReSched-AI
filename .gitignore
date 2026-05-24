@@ -1,0 +1,26 @@
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local database / generated outputs
+data/*.sqlite3
+data/*.db
+data/resched_ai_section_timetables.zip
+
+# Local import source files can contain institution-specific records.
+# Keep extracted safe demo data in data/*.json and data/*.csv instead.
+imports/
+
+# Local OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example

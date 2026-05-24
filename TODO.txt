@@ -1,0 +1,108 @@
+ReSched AI - Project Work Report
+
+Project title:
+ReSched AI: Repeat-Student Aware University Timetable Optimizer
+
+Institution context:
+NASTP Institute of Information Technology (NIIT). The project uses SECTION-WISE timetable files as the main imported dataset and keeps third-party projects only as design/feature inspiration.
+
+What was built:
+1. FastAPI backend with SQLite storage.
+2. React/Tailwind frontend admin dashboard.
+3. Admin login flow.
+4. Teachers, courses, sections, rooms/labs, repeat-students, and time-slots modules.
+5. SECTION-WISE importer for NIIT-style DOCX timetable files.
+6. CSP-style scheduling engine with hard constraints and soft scoring.
+7. Section-wise, teacher-wise, room-wise, and lab-wise timetable views.
+8. Conflict report and quality score.
+9. Explainable AI panel for scheduled classes.
+10. CSV export, full PDF export, and section-wise PDF ZIP export.
+
+Extracted dataset summary:
+- Sections: 12
+- Courses: 52
+- Teachers: 37
+- Rooms/Labs: 15
+- Section-course mappings: 115
+- Academic day timing: 09:00 to 16:30
+- Labs: one continuous 3-slot block
+
+Current verified scheduler result:
+- Scheduled sessions: 149/149
+- Unscheduled sessions: 0
+- Hard conflicts: 0
+- Overall quality score: 85/100
+
+Important rules implemented:
+1. Teacher cannot be double-booked.
+2. Room/lab cannot be double-booked.
+3. Section cannot attend two classes at the same time.
+4. Lab courses must be in lab rooms.
+5. Theory courses must be in classrooms.
+6. Room capacity must satisfy section strength.
+7. Teacher must be available.
+8. Teacher must have expertise for the course.
+9. Repeat-student current and repeated courses cannot clash.
+10. Same section-course keeps the same teacher for all weekly sessions.
+11. 3-credit theory courses are split as 2-hour block plus 1-hour lecture on another day.
+12. 2-credit theory courses are scheduled as one continuous 2-hour block where feasible.
+13. Labs are always one continuous 3-hour block.
+14. Same section-course is not repeated on the same day.
+15. Midday break crossing is blocked.
+16. Friday prayer buffer is protected.
+17. Section day gaps are capped so a class is not placed in the morning and then very late with a long free gap.
+18. Heavy-load sections get slight priority in ordering and scoring.
+19. Teacher workload balance is treated as a soft warning, not an impossible hard blocker.
+
+AI concepts used:
+1. CSP:
+   Courses, sections, teachers, rooms, labs, repeat students, and time slots are modeled as variables/domains/constraints.
+2. Backtracking search:
+   The scheduler keeps feasible candidates and can recover when later assignments become impossible.
+3. Heuristic ordering:
+   Labs, scarce teachers, repeat-sensitive sessions, heavy sections, and longer blocks are scheduled earlier.
+4. Heuristic scoring:
+   Candidate slots are scored by compactness, early release, teacher balance, fairness, difficulty timing, and lab quality.
+5. Soft optimization:
+   Timetables are improved even after hard constraints are satisfied.
+6. Explainable AI:
+   Each scheduled slot stores reasons for teacher, room, clash, repeat-student, compactness, and workload decisions.
+7. Adaptive scoring:
+   The AI profile updates weights after each generation based on weak quality areas.
+
+Problems found and solutions:
+1. Problem: Labs appeared as two repeated cells in the frontend.
+   Solution: Timetable grid now renders multi-slot entries as one merged block.
+2. Problem: Some lab/contact-hour rows were imported incorrectly.
+   Solution: Importer now forces lab duration/contact hours to 3 and removes bogus semester-total rows.
+3. Problem: Some sections lost courses because importer sliced required courses.
+   Solution: Removed slicing so all extracted courses remain.
+4. Problem: Same course in different sections could pick the wrong teacher.
+   Solution: Added section-specific course_teachers mapping and scheduler enforcement.
+5. Problem: Full imported dataset became impossible when teacher load was hard capped.
+   Solution: Teacher load is now a soft warning, while real clashes remain hard constraints.
+6. Problem: Full PDF could overflow.
+   Solution: PDF export now uses compact section-wise grids and a per-section ZIP.
+
+Files generated:
+- data/section-wise-extracted-data.json
+- data/section-wise-course-rows.csv
+- data/resched_ai_section_timetables.zip
+
+Presentation points:
+1. ReSched AI solves a real university scheduling problem, not just a static timetable display.
+2. Repeat-student clash avoidance is the unique feature.
+3. The system explains every scheduling decision.
+4. Hard constraints guarantee correctness.
+5. Soft constraints improve student and teacher experience.
+6. PDF ZIP export gives administration ready-to-share section timetables.
+7. The tool supports future AMS integration.
+
+Future improvements:
+1. Connect directly with AMS database.
+2. Add real teacher availability from portal.
+3. Add authenticated department roles.
+4. Add drag-and-drop manual adjustment with automatic revalidation.
+5. Add student-level enrollment import for exact repeat-student protection.
+6. Add genetic algorithm or simulated annealing as an optional optimizer mode.
+7. Add timetable comparison between multiple generated runs.

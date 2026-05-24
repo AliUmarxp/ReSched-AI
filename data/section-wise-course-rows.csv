@@ -1,0 +1,116 @@
+Section,Program,Degree,Semester,Cohort,Course Code,Course Title,Type,Credit Hours,Contact Hours,Weekly Pattern,Duration Block Slots,Faculty
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,EE123,Digital Logic Design,Theory,2,2,1 continuous 2-hour block,1,Lec Hina
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,EE123L,Digital Logic Design Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Zainab
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,HU411,Civics and Community Engagement,Theory,2,2,1 continuous 2-hour block,1,Lec Anum
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,CS112,Object Oriented Programming,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Unaiza
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,CS112L,Object Oriented Programming Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Kainat
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,MA216,Discrete Structures,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Sidra
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,EL271,Expository Writing,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Anum
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,BA152,Introduction to Management,Theory,2,2,1 continuous 2-hour block,1,Lec Haroon
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,FQ101,Fahm -e-Qur’an-II,Theory,1,1,1 lecture/week,1,VFM Zeeshan
+BSCS-2,BS Computer Science,BSCS,2,FALL 2025,MA118,*Pre-Calculus (Non-Credit),Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS260,Comp Networks,Theory,2,2,1 continuous 2-hour block,1,Dr Farrukh
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS260L,Comp Networks Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Iqra
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS216,Data Structures,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Unaiza
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS216L,Data Structures Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Daniyal
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS305,Software Engineering,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Sajid
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS215,Information Security,Theory,2,2,1 continuous 2-hour block,1,Dr Sajid
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS215L,Information Security Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Usama
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS344,Artificial Intelligence,Theory,2,2,1 continuous 2-hour block,1,Dr Ali
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,CS344L,Artificial Intelligence Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Faryal
+BSCS-3,BS Computer Science,BSCS,3,SPRING 2025,MA201,Linear Algebra,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Sidra
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,CS226,Computer Organization & Assembly Language,Theory,2,2,1 continuous 2-hour block,1,LE Daniyal
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,CS226L,Computer Organization & Assembly Language Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Sibgha
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,AI233,Machine Learning,Theory,2,2,1 continuous 2-hour block,1,Dr Shahan
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,AI233L,Machine Learning Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hammad
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,PH111,Applied Physics,Theory,2,2,1 continuous 2-hour block,1,Lec Hafsa
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,PH111L,Applied Physics Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hamza
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,MA105,Multivariable Calculus,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,EL271,Expository Writing,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Anum
+BSCS-4,BS Computer Science,BSCS,4,FALL 2024,HU411,Civics and Community Engagement,Theory,2,2,1 continuous 2-hour block,1,Lec Khola
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,CS325,Operating Systems,Theory,2,2,1 continuous 2-hour block,1,Lec Shagufta
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,CS325L,Operating Systems Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Daniyal
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,CS332,Design and Analysis of Algorithms,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Saman
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,AI335,Deep Learning,Theory,2,2,1 continuous 2-hour block,1,Lec Haseeb
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,AI335L,Deep Learning Lab,Lab,1,3,1 continuous 3-hour lab,3,Lec Haseeb
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,IT371L,Web Technologies,Lab,2,3,1 continuous 3-hour lab,3,LE Daniyal
+BSCS-5,BS Computer Science,BSCS,5,SPRING 2024,BA152,Introduction to Management,Theory,2,2,1 continuous 2-hour block,1,Lec Haroon
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,CS112,Object Oriented Programming,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Unaiza
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,CS112L,Object Oriented Programming Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Ibrahim
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,AI130,Programming for AI,Theory,2,2,1 continuous 2-hour block,1,Lec Mubashra
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,AI130L,Programming for AI Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hammad
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,EE123,Digital Logic Design,Theory,2,2,1 continuous 2-hour block,1,Lec Hina
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,EE123L,Digital Logic Design Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Zainab
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,CS260,Comp Networks,Theory,2,2,1 continuous 2-hour block,1,Lec Shagufta
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,CS260L,Comp Networks Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Iqra
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,FQ100,Fehm -e-Quran I,Theory,1,1,1 lecture/week,1,VFM Zafar
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,MA116,Discrete Structures,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Maria
+BSAI-2,BS Artificial Intelligence,BSAI,2,FALL 2025,MA118,*Pre-Calculus (Non-Credit),Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS260,Comp Networks,Theory,2,2,1 continuous 2-hour block,1,Dr Farrukh
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS260L,Comp Networks Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Iqra
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS216,Data Structures,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Tabassum
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS216L,Data Structures Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Daniyal
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS305,Software Engineering,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Nazim
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS215,Information Security,Theory,2,2,1 continuous 2-hour block,1,Dr Sajid
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS215L,Information Security Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Usama
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS344,Artificial Intelligence,Theory,2,2,1 continuous 2-hour block,1,Dr Ali
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,CS344L,Artificial Intelligence Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Faryal
+BSAI-3,BS Artificial Intelligence,BSAI,3,SPRING 2025,MA201,Linear Algebra,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Ayesha
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,CS226,Computer Organization & Assembly Language,Theory,2,2,1 continuous 2-hour block,1,LE Daniyal
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,CS226L,Computer Organization & Assembly Language Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Sibgha
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,AI230,Programming for Artificial Intelligence,Theory,2,2,1 continuous 2-hour block,1,Lec Mubashra
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,AI230L,Programming for Artificial Intelligence Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hammad
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,AI233,Machine Learning,Theory,2,2,1 continuous 2-hour block,1,Dr Shahan
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,AI233L,Machine Learning Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hammad
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,PH111,Applied Physics,Theory,2,2,1 continuous 2-hour block,1,Lec Hafsa
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,PH111L,Applied Physics Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hamza
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,HU124,Islamic Studies & Ethics,Theory,2,2,1 continuous 2-hour block,1,VFM Zeeshan
+BSAI-4,BS Artificial Intelligence,BSAI,4,FALL 2024,MA105,Multivariable Calculus,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,CS325,Operating Systems,Theory,2,2,1 continuous 2-hour block,1,Lec Shagufta
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,CS325L,Operating Systems Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Daniyal
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,CS332,Design and Analysis of Algorithms,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Saman
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI324,Natural Language Programming,Theory,2,2,1 continuous 2-hour block,1,Dr Hani
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI324L,Natural Language Programming Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Faryal
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI321,Knowledge Representation and Reasoning,Theory,2,2,1 continuous 2-hour block,1,Dr H ani
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI321L,Knowledge Representation and Reasoning Lab,Lab,1,3,1 continuous 3-hour lab,3,Lec Nazim
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI335,Deep Learning,Theory,2,2,1 continuous 2-hour block,1,Lec Haseeb
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,AI335L,Deep Learning Lab,Lab,1,3,1 continuous 3-hour lab,3,Lec Haseeb
+BSAI-5,BS Artificial Intelligence,BSAI,5,SPRING 2024,EL271,Expository Writing,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Khola
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,CS305,Software Engineering,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Nazim
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,CS112,Object Oriented Programming,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Azeem
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,CS112L,Object Oriented Programming Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Ibrahim
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,EE123,Digital Logic Design,Theory,2,2,1 continuous 2-hour block,1,Lec Hina
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,EE123L,Digital Logic Design Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Zainab
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,PH111,Applied Physics,Theory,2,2,1 continuous 2-hour block,1,Lec Hafsa
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,PH111L,Applied Physics Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Hamza
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,MA201,Linear Algebra,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Mumtaz
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,FQ100,Fehm -e-Quran I,Theory,1,1,1 lecture/week,1,VFM Zafar
+BSCYS-2,BS Cyber Security,BSCYS,2,FALL 2025,MA118,*Pre-Calculus (Non-Credit),Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CS325,Operating Systems,Theory,2,2,1 continuous 2-hour block,1,Lec Shagufta
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CS325L,Operating Systems Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Iqra
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CS226,Computer Organization & Assembly Language,Theory,2,2,1 continuous 2-hour block,1,Lec Mubashra
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CS226L,Computer Organization & Assembly Language Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Sibgha
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CY223,Network Security,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Azeem
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CY223L,Network Security Lab,Lab,1,3,1 continuous 3-hour lab,3,Lec Azeem
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,CY103,Information Assurance,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Azeem
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,MA105,Multivariable Calculus,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Maria
+BSCYS-4,BS Cyber Security,BSCYS,4,FALL 2024-1,MA201,Linear Algebra,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Mumtaz
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,CS112,Object Oriented Programming,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Unaiza
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,CS112L,Object Oriented Programming Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Kainat
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,CS260,Comp Networks,Theory,2,2,1 continuous 2-hour block,1,LE Usama
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,CS260L,Comp Networks Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Usama
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,EE123,Digital Logic Design,Theory,2,2,1 continuous 2-hour block,1,Lec Hina
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,EE123L,Digital Logic Design Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Zainab
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,CS305,Software Engineering,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Nazim
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,MA216,Discrete Structures,Theory,3,3,2-hour block + 1-hour lecture,1,Lec Sidra
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,FQ100,Fehm -e-Quran I,Theory,1,1,1 lecture/week,1,VFM Zafar
+BSSE-2,BS Software Engineering,BSSE,2,FALL 2025,MA118,*Pre-Calculus (Non-Credit),Theory,3,3,2-hour block + 1-hour lecture,1,Dr Fiza
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,CS226,Computer Organization & Assembly Language,Theory,2,2,1 continuous 2-hour block,1,Lec Mubashra
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,CS226L,Computer Organization & Assembly Language Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Sibgha
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,SE216,Software Design & Architecture,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Rubab
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,SE200,Software Requirement Engineering,Theory,2,2,1 continuous 2-hour block,1,Dr Rubab
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,SE200L,Software Requirement Engineering Lab,Lab,1,3,1 continuous 3-hour lab,3,LE Faryal
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,MA105,Multivariable Calculus,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Maria
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,MA201,Linear Algebra,Theory,3,3,2-hour block + 1-hour lecture,1,Dr Ayesha
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,SE414,Internet for Things (IoT) for Software Engineering,Theory,2,2,1 continuous 2-hour block,1,Lec Tabassum
+BSSE-4,BS Software Engineering,BSSE,4,FALL 2024-1,SE414L,Internet for Things (IoT) for Software Engineering Lab,Lab,1,3,1 continuous 3-hour lab,3,Lec Tabassum

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ReSched AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: "#152238",
+              slatepanel: "#0d1b2f",
+              teal: "#0f766e",
+              mint: "#d9f8ef",
+              amberline: "#d97706",
+              paper: "#f6f8fb",
+            },
+            boxShadow: {
+              soft: "0 18px 45px rgba(21, 34, 56, 0.08)",
+            },
+          },
+        },
+      };
+    </script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" src="/static/app.jsx"></script>
+  </body>
+</html>
