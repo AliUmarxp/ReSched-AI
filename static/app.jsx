@@ -1,14 +1,72 @@
 const { useEffect, useMemo, useState } = React;
 
+function apiErrorMessage(result, fallback) {
+  const detail = result?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((item) => `${String(item.loc?.at(-1) || "Field").replace(/_/g, " ")}: ${item.msg}`).join(" · ");
+  }
+  if (detail?.message) return detail.message;
+  return fallback;
+}
+
 const API = {
   async login(username, password) {
     const response = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ identifier: username, password }),
     });
     if (!response.ok) throw new Error("Invalid login");
     return response.json();
+  },
+  async signup(payload) {
+    const response = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(apiErrorMessage(result, "Registration failed"));
+    return result;
+  },
+  async logout() {
+    await fetch("/api/auth/logout", { method: "POST" });
+  },
+  async me() {
+    const response = await fetch("/api/auth/me");
+    if (!response.ok) throw new Error("No active session");
+    return response.json();
+  },
+  async getConstraints() {
+    const response = await fetch("/api/constraints");
+    if (!response.ok) throw new Error("Unable to load constraints");
+    return response.json();
+  },
+  async saveConstraints(constraints) {
+    const response = await fetch("/api/constraints", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ constraints }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Unable to save constraints");
+    return result;
+  },
+  async getRegistrationRequests(status = "pending") {
+    const response = await fetch(`/api/admin/requests?status_filter=${encodeURIComponent(status)}`);
+    if (!response.ok) throw new Error("Unable to load registration requests");
+    return response.json();
+  },
+  async reviewRegistration(userId, decision, adminNote = "") {
+    const response = await fetch(`/api/admin/requests/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, admin_note: adminNote || null }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(typeof result.detail === "string" ? result.detail : "Unable to review request");
+    return result;
   },
   async getData() {
     const response = await fetch("/api/data");
@@ -39,14 +97,22 @@ const API = {
     if (!response.ok) throw new Error("Unable to import section-wise data");
     return response.json();
   },
+  async importDataset(dataset) {
+    const response = await fetch("/api/import/dataset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataset, replace: true }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      const detail = result.detail;
+      throw new Error(typeof detail === "string" ? detail : detail?.message || "Dataset validation failed");
+    }
+    return result;
+  },
   async getFreeRooms(day, slotId) {
     const response = await fetch(`/api/rooms/free?day=${encodeURIComponent(day)}&slot_id=${encodeURIComponent(slotId)}`);
     if (!response.ok) throw new Error("Unable to fetch free rooms");
-    return response.json();
-  },
-  async getInspirations() {
-    const response = await fetch("/api/benchmarks/inspirations");
-    if (!response.ok) throw new Error("Unable to fetch inspirations");
     return response.json();
   },
   async getDataPolicy() {
@@ -56,7 +122,7 @@ const API = {
   },
 };
 
-const NAV = [
+const USER_NAV = [
   ["dashboard", "Dashboard", "layout-dashboard"],
   ["teachers", "Teachers", "user-round-check"],
   ["courses", "Courses", "book-open-check"],
@@ -64,9 +130,15 @@ const NAV = [
   ["sectionPlan", "Section Plan", "list-checks"],
   ["rooms", "Rooms/Labs", "building-2"],
   ["repeat", "Repeat Students", "refresh-cw"],
+  ["constraints", "Constraints", "sliders-horizontal"],
   ["generate", "Generate", "wand-sparkles"],
   ["timetable", "Timetable", "calendar-days"],
   ["reports", "Reports", "chart-no-axes-combined"],
+];
+
+const ADMIN_NAV = [
+  ["dashboard", "Admin Overview", "layout-dashboard"],
+  ["requests", "Access Requests", "user-plus"],
 ];
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
@@ -90,7 +162,7 @@ const ACADEMIC_RULES = [
 ];
 
 function Icon({ name, className = "" }) {
-  return <i data-lucide={name} className={className} aria-hidden="true" />;
+  return <span className={`icon-shell ${className}`} aria-hidden="true"><i data-lucide={name} /></span>;
 }
 
 function normalizeId(value) {
@@ -109,6 +181,7 @@ function toCsvText(value) {
 }
 
 function parseFieldValue(field, value) {
+  if (field.type === "boolean") return Boolean(value);
   if (field.type === "number") return Number(value) || 0;
   if (Array.isArray(value)) return value;
   if (field.type === "tags" || field.type === "slotTags") {
@@ -142,17 +215,22 @@ function weeklyPattern(course) {
 
 function displayValue(value) {
   if (Array.isArray(value)) return toCsvText(value);
-  return value ?? "";
+  return value === undefined || value === null || value === "" ? "—" : value;
+}
+
+function formatCell(field, row) {
+  const value = row[field.key];
+  if (field.type === "boolean") return value ? "Allowed (max 2)" : "Single session";
+  if (field.key === "id") return String(value || "—").toUpperCase();
+  if (field.key === "type" || field.key === "program") {
+    return String(value || "—").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  }
+  return displayValue(value);
 }
 
 function App() {
-  const [auth, setAuth] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("resched-auth") || "null");
-    } catch {
-      return null;
-    }
-  });
+  const [auth, setAuth] = useState(null);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [activePage, setActivePage] = useState("dashboard");
   const [data, setData] = useState(null);
   const [run, setRun] = useState(null);
@@ -161,9 +239,13 @@ function App() {
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
-    if (!auth) return;
+    if (!auth || auth.role !== "user") return;
     refresh();
   }, [auth]);
+
+  useEffect(() => {
+    API.me().then((result) => setAuth(result.user)).catch(() => setAuth(null)).finally(() => setCheckingSession(false));
+  }, []);
 
   useEffect(() => {
     window.lucide?.createIcons();
@@ -172,11 +254,12 @@ function App() {
   async function handleLogin(username, password) {
     const result = await API.login(username, password);
     setAuth(result.user);
-    localStorage.setItem("resched-auth", JSON.stringify(result.user));
   }
 
-  function handleLogout() {
-    localStorage.removeItem("resched-auth");
+  async function handleLogout() {
+    try {
+      await API.logout();
+    } catch {}
     setAuth(null);
     setData(null);
     setRun(null);
@@ -270,16 +353,16 @@ function App() {
     if (!file) return;
     const text = await file.text();
     const payload = JSON.parse(text);
-    for (const key of ["teachers", "courses", "sections", "rooms", "repeatStudents", "timeSlots", "programs", "institution", "sourceInsights", "aiProfile"]) {
-      if (payload[key]) {
-        await API.saveEntity(key, payload[key]);
-      }
-    }
-    await refresh();
+    const result = await API.importDataset(payload);
+    setData(result.dataset);
+    setRun(null);
+    setSelectedEntry(null);
     setNotice("Dataset imported.");
   }
 
-  const page = data ? (
+  const page = auth?.role === "admin" ? (
+    activePage === "requests" ? <AdminRequestsPage /> : <AdminDashboard setActivePage={setActivePage} />
+  ) : data ? (
     <PageRouter
       activePage={activePage}
       data={data}
@@ -293,10 +376,15 @@ function App() {
       importSectionWise={importSectionWise}
       exportDataset={exportDataset}
       importDataset={importDataset}
+      auth={auth}
     />
   ) : (
     <div className="panel p-8">Loading ReSched AI...</div>
   );
+
+  if (checkingSession) {
+    return <div className="min-h-screen grid place-items-center bg-slate-50 text-sm font-bold text-slate-600">Checking your session...</div>;
+  }
 
   if (!auth) {
     return <LoginScreen onLogin={handleLogin} />;
@@ -304,18 +392,18 @@ function App() {
 
   return (
     <div className="app-shell lg:flex">
-      <aside className="desktop-sidebar lg:sticky lg:top-0 lg:h-screen lg:w-72 bg-slatepanel text-white p-5">
+      <aside className="desktop-sidebar lg:sticky lg:top-0 lg:h-screen lg:w-64 bg-slatepanel text-white p-4">
         <div className="flex items-center gap-3 pb-6">
           <div className="grid h-11 w-11 place-items-center rounded-lg bg-teal text-white">
             <Icon name="brain-circuit" />
           </div>
           <div>
-            <div className="text-lg font-black">ReSched AI</div>
-            <div className="text-xs text-slate-300">NIIT timetable optimizer</div>
+            <div className="text-lg font-black">ReSched</div>
+            <div className="text-xs text-slate-300">Academic operations</div>
           </div>
         </div>
         <nav className="grid gap-1">
-          {NAV.map(([id, label, icon]) => (
+          {(auth?.role === "admin" ? ADMIN_NAV : USER_NAV).map(([id, label, icon]) => (
             <button
               key={id}
               type="button"
@@ -327,31 +415,28 @@ function App() {
             </button>
           ))}
         </nav>
-        <div className="mt-7 rounded-lg border border-white/10 p-4 text-sm text-slate-300">
-          <div className="font-bold text-white">CSP + Heuristics</div>
-          <div className="mt-2 text-xs leading-5">Backtracking scheduler with repeat-student protection, compactness, fairness, and explainable slot scoring.</div>
-        </div>
       </aside>
 
-      <main className="min-w-0 flex-1 p-4 md:p-7">
+      <main className="min-w-0 flex-1 p-3 md:p-6 xl:p-8">
         <TopBar busy={busy} notice={notice} run={run} onGenerate={runScheduler} onLogout={handleLogout} auth={auth} />
         {page}
       </main>
 
-      <ExplanationPanel entry={selectedEntry} />
+      {auth?.role === "user" ? <ExplanationPanel entry={selectedEntry} /> : null}
     </div>
   );
 }
 
 function TopBar({ busy, notice, run, onGenerate, onLogout, auth }) {
+  const isAdmin = auth?.role === "admin";
   return (
     <header className="mb-5 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       <div>
-        <h1 className="text-2xl font-black tracking-normal text-ink md:text-3xl">Repeat-Student Aware Timetable Optimizer</h1>
-        <div className="mt-1 text-sm text-slate-600">AI decision support for university timetable administration</div>
+        <h1 className="text-2xl font-black tracking-normal text-ink md:text-3xl">{isAdmin ? "Platform Administration" : "Scheduling Workspace"}</h1>
+        <div className="mt-1 text-sm text-slate-600">{isAdmin ? "Account approvals and platform oversight" : "Your institution's private scheduling workspace"}</div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {run?.quality && (
+        {!isAdmin && run?.quality && (
           <div className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-extrabold text-emerald-700">
             Score {run.quality.overall}/100
           </div>
@@ -364,19 +449,25 @@ function TopBar({ busy, notice, run, onGenerate, onLogout, auth }) {
           <Icon name="log-out" />
           Logout
         </button>
-        <button className="btn btn-primary" type="button" onClick={onGenerate} disabled={busy}>
+        {!isAdmin ? <button className="btn btn-primary" type="button" onClick={onGenerate} disabled={busy}>
           <Icon name="wand-sparkles" />
           {busy ? "Working..." : "Generate"}
-        </button>
+        </button> : null}
       </div>
     </header>
   );
 }
 
 function LoginScreen({ onLogin }) {
+  const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
+  const [form, setForm] = useState({
+    username: "", email: "", password: "", full_name: "", phone: "",
+    institution_name: "", department: "", designation: "", signup_reason: "",
+  });
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function submit(event) {
@@ -392,37 +483,127 @@ function LoginScreen({ onLogin }) {
     }
   }
 
+  async function submitSignup(event) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    setMessage("");
+    try {
+      const result = await API.signup(form);
+      setMessage(result.message + ". You can sign in after approval.");
+      setMode("login");
+      setUsername(form.username);
+      setPassword("");
+    } catch (err) {
+      setError(err.message || "Registration failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function updateSignup(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
   return (
-    <div className="min-h-screen grid place-items-center p-5 bg-gradient-to-br from-slate-100 to-teal-50">
-      <form onSubmit={submit} className="panel w-full max-w-md p-6">
+    <div className="min-h-screen grid place-items-center p-5 bg-gradient-to-br from-slate-100 via-white to-teal-50">
+      <div className={`panel w-full ${mode === "signup" ? "max-w-3xl" : "max-w-md"} p-6 md:p-8`}>
         <div className="flex items-center gap-3">
           <div className="grid h-11 w-11 place-items-center rounded-lg bg-teal text-white">
             <Icon name="shield-check" />
           </div>
           <div>
-            <h1 className="text-2xl font-black text-ink">ReSched AI Login</h1>
-            <p className="text-sm text-slate-600">NIIT timetable administration console</p>
+            <h1 className="text-2xl font-black text-ink">ReSched AI</h1>
+            <p className="text-sm text-slate-600">Your university scheduling workspace</p>
           </div>
         </div>
-        <div className="mt-5 grid gap-3">
+        <div className="mt-6 grid grid-cols-2 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Account access">
+          {[['login', 'Sign in'], ['signup', 'Request account']].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={mode === id} className={`rounded-md px-3 py-2 text-sm font-extrabold ${mode === id ? "bg-white text-ink shadow-sm" : "text-slate-500"}`} onClick={() => { setMode(id); setError(""); }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        {message ? <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm font-semibold text-emerald-800" role="status">{message}</div> : null}
+        {mode === "login" ? <form onSubmit={submit} className="mt-5 grid gap-3">
           <label className="grid gap-1 text-sm">
-            <span className="font-bold text-slate-700">Username</span>
-            <input className="field" value={username} onChange={(event) => setUsername(event.target.value)} />
+            <span className="font-bold text-slate-700">Username or email</span>
+            <input className="field" name="username" autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} />
           </label>
           <label className="grid gap-1 text-sm">
             <span className="font-bold text-slate-700">Password</span>
-            <input className="field" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+            <input className="field" name="password" autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
           </label>
-          {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
+          {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</div> : null}
           <button className="btn btn-primary" type="submit" disabled={busy}>
             <Icon name="log-in" />
             {busy ? "Signing in..." : "Sign In"}
           </button>
           <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-            Demo credentials: `admin / admin123`
+            Accounts must be approved by an administrator before first sign-in.
           </div>
-        </div>
-      </form>
+        </form> : <form onSubmit={submitSignup} className="mt-5 grid gap-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              ["full_name", "Full name", true], ["username", "Username", true],
+              ["email", "Work email", true, "email"], ["phone", "Phone", false],
+              ["institution_name", "University / institution", true], ["department", "Department", false],
+              ["designation", "Designation", false], ["password", "Password", true, "password"],
+            ].map(([key, label, required, type]) => {
+              const autocomplete = {
+                full_name: "name", username: "username", email: "email", phone: "tel",
+                institution_name: "organization", department: "organization-title",
+                designation: "off", password: "new-password",
+              }[key];
+              return (
+              <label key={key} className="grid gap-1 text-sm">
+                <span className="font-bold text-slate-700">{label}{required ? " *" : ""}</span>
+                <input className="field" name={key} autoComplete={autocomplete} required={required} type={type || "text"} value={form[key]} onChange={(event) => updateSignup(key, event.target.value)} />
+              </label>
+              );
+            })}
+          </div>
+          <label className="grid gap-1 text-sm">
+            <span className="font-bold text-slate-700">How will you use ReSched AI?</span>
+            <textarea className="field min-h-24" maxLength="1200" value={form.signup_reason} onChange={(event) => updateSignup("signup_reason", event.target.value)} />
+          </label>
+          {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700" role="alert">{error}</div> : null}
+          <button className="btn btn-primary" type="submit" disabled={busy}>{busy ? "Submitting..." : "Submit for approval"}</button>
+          <p className="text-xs text-slate-500">Use at least 10 password characters. Your data workspace is created only after approval.</p>
+        </form>}
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboard({ setActivePage }) {
+  const [summary, setSummary] = useState({ pending: 0, approved: 0, denied: 0 });
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    Promise.all(["pending", "approved", "denied"].map((status) => API.getRegistrationRequests(status)))
+      .then(([pending, approved, denied]) => setSummary({ pending: pending.count, approved: approved.count, denied: denied.count }))
+      .catch((err) => setError(err.message));
+  }, []);
+
+  return (
+    <div className="grid gap-5">
+      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">{error}</div> : null}
+      <div className="flex justify-end">
+        <button type="button" className="btn btn-primary" onClick={() => setActivePage("requests")}><Icon name="clipboard-check" />Review requests{summary.pending ? ` (${summary.pending})` : ""}</button>
+      </div>
+      <section className="grid gap-4 md:grid-cols-3">
+        {[
+          ["Pending requests", summary.pending, "user-plus", "text-amber-700"],
+          ["Approved accounts", summary.approved, "badge-check", "text-emerald-700"],
+          ["Denied requests", summary.denied, "user-x", "text-rose-700"],
+        ].map(([label, value, icon, color]) => (
+          <div key={label} className="panel p-5">
+            <div className="flex items-center justify-between"><span className="text-sm font-extrabold text-slate-600">{label}</span><Icon name={icon} className={color} /></div>
+            <div className={`mt-3 text-3xl font-black ${color}`}>{value}</div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
@@ -446,6 +627,12 @@ function PageRouter(props) {
   }
   if (activePage === "repeat") {
     return <EntityManager title="Repeat Students" name="repeatStudents" rows={data.repeatStudents} fields={repeatFields(data)} onSave={props.saveEntity} />;
+  }
+  if (activePage === "constraints") {
+    return <ConstraintsPage />;
+  }
+  if (activePage === "requests" && props.auth?.role === "admin") {
+    return <AdminRequestsPage />;
   }
   if (activePage === "generate") {
     return <GeneratePage {...props} />;
@@ -486,8 +673,8 @@ function Dashboard({ data, run, runScheduler, busy, setSelectedEntry, selectedEn
         <div className="panel p-5">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
-              <h2 className="text-lg font-black">Current AI Run</h2>
-              <p className="mt-1 text-sm text-slate-600">{run ? `${report.scheduled_sessions}/${report.total_sessions} sessions scheduled` : "Generate a timetable to see CSP decisions."}</p>
+              <h2 className="text-lg font-black">Latest Schedule</h2>
+              <p className="mt-1 text-sm text-slate-600">{run ? `${report.scheduled_sessions}/${report.total_sessions} sessions scheduled` : "Generate a timetable after your data and rules are ready."}</p>
             </div>
             <button className="btn btn-primary" type="button" onClick={runScheduler} disabled={busy}>
               <Icon name="play" />
@@ -585,74 +772,6 @@ function OperationsPanel({ data }) {
   );
 }
 
-function InspirationPanel() {
-  const [payload, setPayload] = useState(null);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    API.getInspirations()
-      .then(setPayload)
-      .catch((err) => setError(err.message || "Unable to load inspirations"));
-  }, []);
-
-  if (error) return null;
-  if (!payload) return null;
-  return (
-    <section className="panel p-5">
-      <h2 className="text-xl font-black">Benchmark Inspirations</h2>
-      <p className="mt-1 text-sm text-slate-600">Adopted from mature university scheduling products and portals</p>
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-black uppercase text-slate-500">Reference Sources</div>
-          <div className="mt-2 grid gap-2">
-            {payload.sources.map((source) => (
-              <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="text-sm font-bold text-teal-700 underline">
-                {source.name}
-              </a>
-            ))}
-          </div>
-        </div>
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-          <div className="text-xs font-black uppercase text-emerald-700">Implemented Ideas</div>
-          <div className="mt-2 grid gap-2 text-sm text-emerald-900">
-            {payload.ideas_adopted.map((idea) => (
-              <div key={idea} className="flex gap-2">
-                <Icon name="check-circle-2" className="mt-0.5 shrink-0" />
-                <span>{idea}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function AIConceptsPanel() {
-  const concepts = [
-    ["CSP", "Teacher, room, section, lab, capacity, availability, and repeat-student rules are modeled as constraints before any slot is accepted."],
-    ["Backtracking Search", "The engine tries feasible assignments and keeps alternate candidates so impossible later choices can be recovered by the search routine."],
-    ["Heuristic Ordering", "Labs, scarce teachers, repeat-sensitive sections, heavier sections, and longer blocks are scheduled earlier."],
-    ["Soft Optimization", "Candidate slots are scored for compact days, early release, teacher balance, difficulty timing, and day fairness."],
-    ["Explainable AI", "Every scheduled class stores reasons showing why the teacher, room, day, and time were selected."],
-    ["Adaptive Scoring", "The AI profile updates weights after each run using weak quality areas such as compactness and teacher balance."],
-  ];
-  return (
-    <section className="panel p-5">
-      <h2 className="text-xl font-black">AI Concepts Used</h2>
-      <p className="mt-1 text-sm text-slate-600">Viva-ready mapping of AI ideas to actual project behavior</p>
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        {concepts.map(([name, detail]) => (
-          <div key={name} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <div className="text-sm font-black text-teal-700">{name}</div>
-            <div className="mt-1 text-sm text-slate-700">{detail}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function MiniStat({ label, value }) {
   return (
     <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
@@ -696,7 +815,9 @@ function EntityManager({ title, name, rows, fields, onSave }) {
   const [selectedId, setSelectedId] = useState(rows[0]?.id || "");
   const selected = rows.find((row) => row.id === selectedId) || rows[0] || null;
   const [draft, setDraft] = useState(selected || {});
-  const tableFields = fields.filter((field) => !field.hideInTable).slice(0, 5);
+  const [query, setQuery] = useState("");
+  const tableFields = fields.filter((field) => !field.hideInTable);
+  const visibleRows = rows.filter((row) => !query.trim() || Object.values(row).some((value) => String(value).toLowerCase().includes(query.trim().toLowerCase())));
 
   useEffect(() => {
     const next = rows.find((row) => row.id === selectedId) || rows[0] || {};
@@ -755,10 +876,10 @@ function EntityManager({ title, name, rows, fields, onSave }) {
             <h2 className="text-xl font-black">{title}</h2>
             <p className="mt-1 text-sm text-slate-600">{rows.length} records</p>
           </div>
-          <button type="button" className="btn btn-secondary" onClick={addNew}>
-            <Icon name="plus" />
-            Add
-          </button>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input className="field table-search" type="search" placeholder={`Search ${title.toLowerCase()}...`} value={query} onChange={(event) => setQuery(event.target.value)} />
+            <button type="button" className="btn btn-primary" onClick={addNew}><Icon name="plus" />Add</button>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[720px] text-left text-sm">
@@ -772,7 +893,7 @@ function EntityManager({ title, name, rows, fields, onSave }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <tr
                   key={row.id}
                   className={`cursor-pointer border-t border-slate-100 hover:bg-slate-50 ${selectedId === row.id ? "bg-emerald-50" : ""}`}
@@ -780,7 +901,7 @@ function EntityManager({ title, name, rows, fields, onSave }) {
                 >
                   {tableFields.map((field) => (
                     <td key={field.key} className="max-w-[260px] truncate px-4 py-3">
-                      {displayValue(row[field.key])}
+                      {formatCell(field, row)}
                     </td>
                   ))}
                 </tr>
@@ -796,7 +917,11 @@ function EntityManager({ title, name, rows, fields, onSave }) {
           {fields.map((field) => (
             <label key={field.key} className="grid gap-1.5 text-sm">
               <span className="font-bold text-slate-700">{field.label}</span>
-              {field.type === "select" ? (
+              {field.type === "boolean" ? (
+                <button type="button" role="switch" aria-checked={Boolean(draft[field.key])} className={`toggle-field ${draft[field.key] ? "on" : ""}`} onClick={() => update(field, !draft[field.key])}>
+                  <span className="toggle-knob" /><span>{draft[field.key] ? "Allowed" : "Not allowed"}</span>
+                </button>
+              ) : field.type === "select" ? (
                 <select className="field" value={draft[field.key] ?? ""} onChange={(event) => update(field, event.target.value)}>
                   {(field.options || []).map((option) => (
                     <option key={option} value={option}>
@@ -816,7 +941,14 @@ function EntityManager({ title, name, rows, fields, onSave }) {
                   value={draft[field.key] || []}
                   onChange={(next) => update(field, next)}
                 />
-              ) : field.type === "tags" || field.type === "slotTags" || field.type === "coursePairs" ? (
+              ) : field.type === "coursePairs" ? (
+                <RepeatCoursePicker
+                  courses={field.courses || []}
+                  sections={field.sections || []}
+                  value={draft[field.key] || []}
+                  onChange={(next) => update(field, next)}
+                />
+              ) : field.type === "tags" || field.type === "slotTags" ? (
                 <textarea
                   className="field min-h-20"
                   value={toCsvText(draft[field.key])}
@@ -954,6 +1086,85 @@ function CoursePicker({ courses, value, onChange }) {
   );
 }
 
+function RepeatCoursePicker({ courses, sections, value, onChange }) {
+  const pairs = Array.isArray(value) ? value : [];
+  const [sectionId, setSectionId] = useState(sections[0]?.id || "");
+  const courseMap = Object.fromEntries(courses.map((course) => [course.id, course]));
+  const section = sections.find((item) => item.id === sectionId) || sections[0] || null;
+  const sectionCourseIds = section?.required_courses?.length ? section.required_courses : courses.map((course) => course.id);
+  const availableCourses = sectionCourseIds.map((courseId) => courseMap[courseId]).filter(Boolean);
+  const [courseId, setCourseId] = useState(availableCourses[0]?.id || "");
+
+  useEffect(() => {
+    if (!sectionId && sections[0]?.id) {
+      setSectionId(sections[0].id);
+    }
+  }, [sectionId, sections]);
+
+  useEffect(() => {
+    if (availableCourses.length && !availableCourses.some((course) => course.id === courseId)) {
+      setCourseId(availableCourses[0].id);
+    }
+  }, [availableCourses, courseId]);
+
+  function addPair() {
+    if (!sectionId || !courseId) return;
+    const exists = pairs.some((pair) => pair.section_id === sectionId && pair.course_id === courseId);
+    if (exists) return;
+    onChange([...pairs, { course_id: courseId, section_id: sectionId }]);
+  }
+
+  function removePair(index) {
+    onChange(pairs.filter((_, pairIndex) => pairIndex !== index));
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="grid gap-2 md:grid-cols-[1fr_1fr_auto]">
+        <select className="field bg-white" value={sectionId} onChange={(event) => setSectionId(event.target.value)}>
+          {sections.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name || item.id}
+            </option>
+          ))}
+        </select>
+        <select className="field bg-white" value={courseId} onChange={(event) => setCourseId(event.target.value)}>
+          {availableCourses.map((course) => (
+            <option key={course.id} value={course.id}>
+              {course.name || course.id}
+            </option>
+          ))}
+        </select>
+        <button type="button" className="btn btn-primary justify-center" onClick={addPair} disabled={!sectionId || !courseId}>
+          <Icon name="plus" />
+          Add
+        </button>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {pairs.length ? (
+          pairs.map((pair, index) => {
+            const pairCourse = courseMap[pair.course_id];
+            const pairSection = sections.find((item) => item.id === pair.section_id);
+            return (
+              <div key={`${pair.section_id}-${pair.course_id}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-black text-ink">{pairCourse?.name || pair.course_id}</div>
+                  <div className="mt-0.5 text-xs font-bold text-slate-500">{pairSection?.name || pair.section_id}</div>
+                </div>
+                <button type="button" className="icon-button shrink-0" onClick={() => removePair(index)} title="Remove">
+                  <Icon name="trash-2" />
+                </button>
+              </div>
+            );
+          })
+        ) : (
+          <div className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-3 text-sm font-bold text-slate-500">No repeated courses selected</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SectionPlanner({ data, saveEntity }) {
   const [sectionId, setSectionId] = useState(data.sections[0]?.id || "");
   const section = data.sections.find((item) => item.id === sectionId) || data.sections[0];
@@ -1053,7 +1264,7 @@ function courseFields(data) {
     { key: "contact_hours", label: "Contact Hours", type: "number", default: 3 },
     { key: "weekly_frequency", label: "Lectures/Week", type: "number", default: 3 },
     { key: "difficulty_level", label: "Difficulty", type: "number", default: 3 },
-    { key: "allowed_teachers", label: "Allowed Teachers", type: "tags", hint: "Teacher IDs separated by commas" },
+    { key: "allowed_teachers", label: "Allowed Teachers", type: "tags", hint: "Teacher IDs separated by commas", hideInTable: true },
   ];
 }
 
@@ -1076,6 +1287,7 @@ function roomFields() {
     { key: "name", label: "Room/Lab" },
     { key: "type", label: "Type", type: "select", options: ["classroom", "lab"], default: "classroom" },
     { key: "capacity", label: "Capacity", type: "number", default: 40 },
+    { key: "allow_parallel_sessions", label: "Shared at Same Time", type: "boolean", default: false, hint: "Opt in to allow a maximum of two simultaneous sessions in this room. Teacher and section collision rules still apply." },
   ];
 }
 
@@ -1084,23 +1296,159 @@ function repeatFields(data) {
     { key: "id", label: "ID" },
     { key: "name", label: "Student" },
     { key: "current_section", label: "Current Section", type: "select", options: data.sections.map((item) => item.id) },
-    { key: "repeated_courses", label: "Repeated Courses", type: "coursePairs", hint: "Format: course_id@section_id" },
+    { key: "repeated_courses", label: "Repeated Courses", type: "coursePairs", courses: data.courses, sections: data.sections },
   ];
 }
 
-function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionWise, exportDataset, importDataset }) {
-  const [policy, setPolicy] = useState(null);
+function ConstraintsPage() {
+  const [constraints, setConstraints] = useState([]);
+  const [busy, setBusy] = useState(true);
+  const [notice, setNotice] = useState("");
+
   useEffect(() => {
-    API.getDataPolicy().then(setPolicy).catch(() => {});
+    API.getConstraints().then((result) => setConstraints(result.constraints)).catch((error) => setNotice(error.message)).finally(() => setBusy(false));
   }, []);
+
+  function updateConstraint(key, changes) {
+    setConstraints((rows) => rows.map((row) => row.key === key ? { ...row, ...changes } : row));
+  }
+
+  async function save() {
+    setBusy(true);
+    setNotice("");
+    try {
+      const result = await API.saveConstraints(constraints.map((row) => ({
+        constraint_key: row.key,
+        enabled: row.enabled,
+        mode: row.enabled ? row.mode : "off",
+        weight: Number(row.weight || 0),
+        parameters: row.parameters || {},
+      })));
+      setConstraints(result.constraints);
+      setNotice("Constraint policy saved. Generate a new timetable to apply it.");
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const groups = constraints.reduce((result, item) => {
+    (result[item.category] ||= []).push(item);
+    return result;
+  }, {});
+
   return (
-    <div className="grid gap-5 2xl:grid-cols-[0.9fr_1.1fr]">
+    <div className="grid gap-5">
+      <section className="panel p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-xl font-black">Scheduling Constraints</h2>
+            <p className="mt-1 max-w-3xl text-sm text-slate-600">Apply or ignore university policy rules and tune quality priorities. Collision rules are locked because disabling them would create invalid timetables.</p>
+          </div>
+          <button className="btn btn-primary" type="button" onClick={save} disabled={busy}>{busy ? "Saving..." : "Save policy"}</button>
+        </div>
+        {notice ? <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm" role="status">{notice}</div> : null}
+      </section>
+      {Object.entries(groups).map(([category, rows]) => (
+        <section key={category} className="panel overflow-hidden">
+          <div className="border-b border-slate-200 px-5 py-4"><h3 className="font-black">{category}</h3></div>
+          <div className="divide-y divide-slate-100">
+            {rows.map((row) => (
+              <div key={row.key} className="grid gap-3 p-5 md:grid-cols-[1fr_auto] md:items-center">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-black text-ink">{row.name}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-black ${row.locked ? "bg-slate-100 text-slate-600" : row.mode === "hard" ? "bg-rose-50 text-rose-700" : "bg-blue-50 text-blue-700"}`}>{row.locked ? "Required" : row.mode === "hard" ? "Hard rule" : "Quality rule"}</span>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-600">{row.description}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  {row.mode === "soft" ? <label className="flex items-center gap-2 text-sm font-bold"><span>Weight</span><input className="field w-24" type="number" min="0" max="10" step="0.1" value={row.weight} onChange={(event) => updateConstraint(row.key, { weight: event.target.value })} /></label> : null}
+                  <label className="flex items-center gap-2 text-sm font-bold">
+                    <input type="checkbox" checked={row.enabled} disabled={row.locked} onChange={(event) => updateConstraint(row.key, { enabled: event.target.checked, mode: event.target.checked ? row.default_mode : "off" })} />
+                    {row.enabled ? "Applied" : "Ignored"}
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function AdminRequestsPage() {
+  const [filter, setFilter] = useState("pending");
+  const [requests, setRequests] = useState([]);
+  const [busy, setBusy] = useState(true);
+  const [notice, setNotice] = useState("");
+
+  async function load(nextFilter = filter) {
+    setBusy(true);
+    try {
+      const result = await API.getRegistrationRequests(nextFilter);
+      setRequests(result.requests);
+    } catch (error) {
+      setNotice(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { load(filter); }, [filter]);
+
+  async function review(id, decision) {
+    setBusy(true);
+    try {
+      await API.reviewRegistration(id, decision);
+      setNotice(`Account ${decision}.`);
+      await load(filter);
+    } catch (error) {
+      setNotice(error.message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-5">
+      <section className="panel p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div><h2 className="text-xl font-black">Access Requests</h2><p className="mt-1 text-sm text-slate-600">Review organizations before their private workspace is activated.</p></div>
+          <select className="field max-w-48" value={filter} onChange={(event) => setFilter(event.target.value)}><option value="pending">Pending</option><option value="approved">Approved</option><option value="denied">Denied</option></select>
+        </div>
+        {notice ? <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm" role="status">{notice}</div> : null}
+      </section>
+      <section className="grid gap-3">
+        {!busy && !requests.length ? <EmptyState title="No requests" action={`There are no ${filter} registration requests.`} /> : requests.map((request) => (
+          <article key={request.id} className="panel p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-lg font-black">{request.full_name}</div>
+                <div className="mt-1 text-sm font-bold text-teal-700">{request.institution_name}</div>
+                <div className="mt-2 text-sm text-slate-600">{request.email} · @{request.username}</div>
+                <div className="mt-1 text-sm text-slate-600">{[request.designation, request.department, request.phone].filter(Boolean).join(" · ")}</div>
+                {request.signup_reason ? <p className="mt-3 max-w-3xl rounded-lg bg-slate-50 p-3 text-sm text-slate-700">{request.signup_reason}</p> : null}
+              </div>
+              {request.status === "pending" ? <div className="flex gap-2"><button className="btn btn-danger" disabled={busy} onClick={() => review(request.id, "denied")}>Deny</button><button className="btn btn-primary" disabled={busy} onClick={() => review(request.id, "approved")}>Approve</button></div> : <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-black capitalize">{request.status}</span>}
+            </div>
+          </article>
+        ))}
+      </section>
+    </div>
+  );
+}
+
+function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionWise, exportDataset, importDataset }) {
+  return (
+    <div className="grid gap-5">
       <section className="panel p-5">
         <h2 className="text-xl font-black">Generate Timetable</h2>
         <div className="mt-5 grid gap-3">
           <button className="btn btn-primary" type="button" onClick={runScheduler} disabled={busy}>
             <Icon name="wand-sparkles" />
-            Run CSP Optimizer
+            Generate Schedule
           </button>
           <a className="btn btn-secondary" href="/api/export/timetable.csv">
             <Icon name="download" />
@@ -1133,35 +1481,6 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
           </button>
         </div>
       </section>
-
-      <section className="panel p-5">
-        <h2 className="text-xl font-black">AI Engine Flow</h2>
-        <div className="mt-4 grid gap-3">
-          {[
-            "Load teachers, courses, sections, rooms, labs, repeat students, and slots",
-            "Sort sessions by labs, scarce teachers, repeat sensitivity, and duration",
-            "Reject hard-constraint violations through CSP checking",
-            "Score valid candidates using compactness, early release, fairness, workload, and difficulty",
-            "Backtrack if a later assignment blocks a feasible timetable",
-          ].map((item, index) => (
-            <div key={item} className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-teal text-sm font-black text-white">{index + 1}</div>
-              <div className="text-sm font-semibold text-slate-700">{item}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <RuleBookPanel />
-      {policy ? (
-        <section className="panel p-5 2xl:col-span-2">
-          <h2 className="text-xl font-black">Data Policy</h2>
-          <p className="mt-2 text-sm text-slate-700">
-            Source of truth: <strong>{policy.source_of_truth}</strong>
-          </p>
-          <p className="mt-2 text-sm text-slate-600">{policy.repo_usage_policy}</p>
-        </section>
-      ) : null}
 
       {run && (
         <section className="panel p-5 2xl:col-span-2">
@@ -1271,10 +1590,18 @@ function TimetableGrid({ data, entries, selectedEntry, setSelectedEntry }) {
     );
   }
 
+  const dayColumnWidth = 112;
+  const slotColumnWidth = 112;
+  const breakColumnWidth = 64;
+  const gridMinWidth = dayColumnWidth + columns.reduce((total, column) => total + (column.type === "break" ? breakColumnWidth : slotColumnWidth), 0);
+
   return (
     <div
       className="timetable-grid"
-      style={{ gridTemplateColumns: `130px ${columns.map((column) => (column.type === "break" ? "72px" : "minmax(128px, 1fr)")).join(" ")}` }}
+      style={{
+        gridTemplateColumns: `${dayColumnWidth}px ${columns.map((column) => (column.type === "break" ? `${breakColumnWidth}px` : `minmax(${slotColumnWidth}px, 1fr)`)).join(" ")}`,
+        minWidth: `${gridMinWidth}px`,
+      }}
     >
       <div className="grid-head">Day / Time</div>
       {columns.map((column) => (
@@ -1397,10 +1724,7 @@ function ReportsPage({ data, run, selectedEntry, setSelectedEntry }) {
           </div>
         </div>
       </section>
-      <AIConceptsPanel />
       <OperationsPanel data={data} />
-      <SourcePlanPanel insights={data.sourceInsights} />
-      <InspirationPanel />
       <section className="panel p-5">
         <h2 className="text-xl font-black">Constraint Priority and Feasibility</h2>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -1441,10 +1765,9 @@ function ReportsPage({ data, run, selectedEntry, setSelectedEntry }) {
           </div>
         ) : null}
       </section>
-      <AiEvidencePanel evidence={run.aiEvidence} />
       <section className="panel p-5">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-black">Explainable Decisions</h2>
+          <h2 className="text-xl font-black">Placement Details</h2>
           <a className="btn btn-secondary" href="/api/export/timetable.csv">
             <Icon name="download" />
             CSV
@@ -1515,7 +1838,7 @@ function SourcePlanPanel({ insights }) {
           </div>
         </div>
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
-          <div className="text-xs font-black uppercase text-emerald-700">AI CCP Mapping</div>
+          <div className="text-xs font-black uppercase text-emerald-700">Import Validation</div>
           <div className="mt-2 grid gap-2 text-sm text-emerald-900">
             {insights.ai_ccp_mapping?.slice(0, 3).map((item) => (
               <div key={item} className="flex gap-2">
@@ -1541,13 +1864,13 @@ function AiEvidencePanel({ evidence }) {
     <section className="panel p-5">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-black">AI CCP Evidence</h2>
+          <h2 className="text-xl font-black">Scheduling Diagnostics</h2>
           <p className="mt-1 text-sm text-slate-600">
             {evidence.title}. Variables: {evidence.variables}. Domain: {evidence.domain_description}
           </p>
         </div>
         <div className="rounded-lg border border-teal-200 bg-mint px-4 py-3 text-sm font-black text-teal-800">
-          Explainable AI Ready
+          Validation Details
         </div>
       </div>
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
@@ -1571,11 +1894,11 @@ function AiEvidencePanel({ evidence }) {
 
 function ExplanationPanel({ entry }) {
   return (
-    <aside className="hidden w-80 shrink-0 border-l border-slate-200 bg-white p-5 xl:block">
+    <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white p-5 2xl:block">
       <div className="sticky top-5">
         <div className="flex items-center gap-2">
           <Icon name="sparkles" className="text-teal-700" />
-          <h2 className="text-lg font-black">AI Explanation</h2>
+          <h2 className="text-lg font-black">Placement Details</h2>
         </div>
         {entry ? (
           <div className="mt-5">
@@ -1586,7 +1909,7 @@ function ExplanationPanel({ entry }) {
                 <InfoRow label="Teacher" value={entry.teacher_name} />
                 <InfoRow label="Room" value={entry.room_name} />
                 <InfoRow label="Time" value={`${entry.day}, ${entry.start_time} - ${entry.end_time}`} />
-                <InfoRow label="Soft Score" value={entry.soft_score} />
+                <InfoRow label="Quality Score" value={entry.soft_score} />
               </div>
             </div>
             <div className="mt-4 grid gap-2">

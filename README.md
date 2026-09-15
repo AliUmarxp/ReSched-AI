@@ -1,237 +1,90 @@
-# ReSched AI
+# ReSched
 
-**Repeat-Student Aware University Timetable Optimizer**
+ReSched is a multi-tenant academic scheduling platform for universities and schools. It gives each approved institution a private workspace for academic data, scheduling policies, timetable generation, validation, reporting, and exports.
 
-ReSched AI is a web-based AI scheduling system for NIIT-style university timetable generation. It is not only a timetable display screen; it models scheduling as a **Constraint Satisfaction Problem (CSP)** and improves valid timetables using **backtracking, heuristic ordering, soft-constraint scoring, and explainable AI**.
+## Core capabilities
 
-![ReSched AI dashboard](docs/final-dashboard-screenshot.png)
+- Account-request workflow with administrator approval or denial
+- Strictly separated administrator and registrar workspaces
+- Isolated data, policies, schedules, and exports for every account
+- Courses, teachers, sections, rooms/labs, repeat students, and section plans
+- Credit hours, contact hours, weekly frequency, and session duration support
+- Teacher availability and course eligibility controls
+- Configurable scheduling constraints with clear applied/ignored states
+- Theory-to-classroom and lab-to-laboratory enforcement
+- Repeat-student, teacher, section, room, capacity, and availability protection
+- Per-room opt-in for up to two simultaneous sessions; disabled by default
+- Timetable views by section, teacher, room, and lab
+- Availability lookup, quality reporting, CSV/PDF export, and per-section PDF bundles
+- Dataset import/export, version tracking, stale-run protection, and audit events
 
-## Quick Start
+## Roles
 
-Anyone can clone and run the project locally. The SQLite database is created automatically on first run from the included seed data.
+### Platform administrator
 
-Requirements:
+Administrators review account requests and manage platform access. They cannot view or modify an institution's scheduling data.
 
-- Python 3.10 or newer
-- Internet connection for first-time package install
+### Registrar / institution user
+
+Approved users manage their own institutional dataset, scheduling rules, timetable generation, reports, and exports.
+
+## Local setup
+
+Requirements: Python 3.11 or newer.
 
 ```powershell
-git clone https://github.com/AliUmarxp/ReSched-AI.git
-cd ReSched-AI
-.\RUN_PROJECT.ps1
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+Copy-Item .env.example .env
+python -m uvicorn backend.main:app --host 127.0.0.1 --port 8002
 ```
 
-Open:
+Open `http://127.0.0.1:8002`.
 
-```text
-http://127.0.0.1:8002
+Development administrator credentials come from environment variables. Never deploy with sample credentials; configure a strong password and application secret in `.env` or through the hosting platform's secret manager.
+
+## Tests
+
+```powershell
+python -m pytest -q
 ```
 
-Demo login:
+## Deployment
 
-```text
-admin / admin123
-```
+The repository includes:
 
-## Search Keywords
+- `Dockerfile` for the application image
+- `docker-compose.yml` for application and PostgreSQL services
+- `.github/workflows/ci.yml` for automated tests
+- `.env.example` for documented configuration
 
-This repository is useful for students searching for:
+For production, use PostgreSQL, HTTPS, secure environment secrets, regular backups, health monitoring, and a reverse proxy or managed container host. Detailed instructions are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
-- Artificial Intelligence CCP project
-- AI lab project in Python
-- university timetable generator
-- university schedule optimizer
-- automatic timetable generation system
-- CSP timetable scheduling
-- constraint satisfaction problem project
-- backtracking scheduling project
-- heuristic search AI project
-- explainable AI scheduling system
-- FastAPI React timetable project
-- SQLite timetable management system
-- repeat-student aware timetable optimizer
+## API and exports
 
-## Why This Project Is Different
+Authenticated users can export:
 
-Most basic timetable generators only check common conflicts such as teacher, room, or section clashes. ReSched AI adds academic rules and fairness logic that are closer to real university scheduling.
+- Timetable CSV: `/api/export/timetable.csv`
+- Timetable PDF: `/api/export/timetable.pdf`
+- Per-section PDF bundle: `/api/export/section-pdfs.zip`
 
-| Area | Basic Timetable Generator | ReSched AI |
-|---|---|---|
-| Teacher clash | Usually supported | Supported as a hard constraint |
-| Room/lab clash | Usually supported | Supported with room type and capacity checks |
-| Lab handling | Often partial | Labs stay as one continuous 3-hour block |
-| Credit-hour logic | Often generic | 3-credit theory uses 2+1 weekly split |
-| Same course teacher | Often flexible/random | Same section-course keeps the same teacher all week |
-| Repeat students | Rarely handled directly | Repeat-student clash protection is part of the model |
-| Student gaps | Often ignored | Compact timetable and gap control scoring |
-| Fairness | Usually minimal | Day fairness and early-release scoring |
-| Explainability | Usually absent | Each slot has an AI explanation panel |
-| Exports | Sometimes CSV only | CSV, PDF, and per-section PDF ZIP |
+Schedules become stale when source data or constraints change and must be regenerated before export.
 
-## Core Features
+## Project documentation
 
-- Admin login flow
-- Dashboard with scheduler score, conflict count, and dataset summary
-- Teachers module with expertise and availability matrix
-- Courses module with type, credit hours, contact hours, difficulty, and allowed teachers
-- Sections module with strength and required courses
-- Section Subject Plan page showing which section studies which courses
-- Rooms/Labs module with type and capacity
-- Repeat-student model for repeated-course clash protection
-- Generate timetable with AI scheduling engine
-- Section-wise, teacher-wise, room-wise, and lab-wise timetable views
-- Conflict report with avoided clashes and warnings
-- AI explanation panel for every scheduled class
-- CSV, full PDF, and section-wise PDF ZIP export
-- Final CCP report and presentation included
+- [Implementation status](IMPLEMENTATION_STATUS.md)
+- [Deployment guide](DEPLOYMENT.md)
+- [Audit and improvement roadmap](PROJECT_AUDIT_AND_IMPROVEMENT_PLAN.md)
 
-## AI Concepts Used
+## Security notes
 
-| AI Concept | How It Is Used |
-|---|---|
-| Constraint Satisfaction Problem | Sessions are variables; teachers, rooms, labs, and time slots are domains; academic rules are constraints. |
-| DFS / Backtracking | The scheduler can backtrack when later assignments become impossible. |
-| Heuristic Ordering | Labs, scarce teachers, repeat-sensitive sessions, and longer sessions are scheduled earlier. |
-| Soft Optimization | Valid schedules are scored for compactness, early release, teacher balance, day fairness, and lab quality. |
-| Knowledge Representation | Teachers, courses, sections, rooms, repeat students, and time slots are represented as structured entities. |
-| Explainable AI | Each scheduled slot stores human-readable reasons for why that slot was selected. |
-| Adaptive Scoring | The AI profile updates weights after a run based on weak quality areas. |
-
-## Scheduling Rules
-
-### Hard Constraints
-
-These rules must not break:
-
-- A teacher cannot teach two classes at the same time.
-- A room or lab cannot be double-booked.
-- A section cannot attend two classes at the same time.
-- Lab courses must be assigned to lab rooms.
-- Theory courses must be assigned to classrooms.
-- Room capacity must be enough for section strength.
-- Teacher must be available and eligible for the course.
-- Same section-course keeps the same teacher across weekly lectures.
-- Labs are scheduled as one continuous 3-hour block.
-- 3-credit theory courses use a 2-hour block plus a 1-hour lecture on another day.
-- Same section-course lectures are spread across different days.
-- Friday prayer buffer and midday break crossing are protected.
-
-### Soft Constraints
-
-These rules improve quality when multiple valid choices exist:
-
-- Minimize section gaps.
-- Prefer early release for students.
-- Balance teacher workload across days.
-- Avoid too many consecutive lectures.
-- Prefer difficult courses earlier in the day.
-- Keep section days compact.
-- Improve fairness after late days.
-
-## AI Scheduling Flow
-
-```text
-Load dataset
-  -> Build required class sessions
-  -> Sort by most constrained first
-  -> Generate teacher-room-time candidates
-  -> Reject hard constraint violations
-  -> Score valid candidates
-  -> Assign best candidate
-  -> Backtrack if needed
-  -> Save timetable, report, quality score, and explanations
-```
-
-## Current Demo Result
-
-Using the cleaned SECTION-WISE demo dataset:
-
-| Metric | Result |
-|---|---:|
-| Weekly sessions scheduled | 149 / 149 |
-| Unscheduled sessions | 0 |
-| Hard conflicts | 0 |
-| Overall quality score | 85 / 100 |
-| Hard constraint score | 100 / 100 |
-| Compactness score | 96 / 100 |
-| Lab quality score | 96 / 100 |
-| Repeat protection score | 100 / 100 |
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React, CSS, Lucide icons |
-| Backend | Python FastAPI |
-| Database | SQLite |
-| AI Engine | Custom Python CSP/backtracking/heuristic scheduler |
-| Export | ReportLab PDF, CSV, ZIP |
-| Dataset | Cleaned NIIT-style SECTION-WISE JSON/CSV seed data |
-
-## Project Structure
-
-```text
-ReSched-AI/
-├── backend/
-│   ├── main.py                  # FastAPI routes and exports
-│   ├── scheduler.py             # AI scheduling engine
-│   ├── sectionwise_importer.py  # SECTION-WISE data extraction
-│   ├── seed_data.py             # Included demo dataset
-│   └── store.py                 # SQLite storage helpers
-├── static/
-│   ├── app.jsx                  # React app
-│   ├── index.html
-│   └── styles.css
-├── data/
-│   ├── section-wise-extracted-data.json
-│   └── section-wise-course-rows.csv
-├── docs/
-│   ├── final-dashboard-screenshot.png
-│   └── section-wise-extraction.md
-├── presentation pptx and report word file/
-│   ├── ReSched_AI_CCP_Final_Presentation.pptx
-│   └── ReSched_AI_CCP_Project_Report.docx
-├── RUN_PROJECT.ps1
-├── requirements.txt
-├── TODO.txt
-├── LICENSE
-└── README.md
-```
-
-## API and Export Endpoints
-
-| Endpoint | Purpose |
-|---|---|
-| `/api/data` | Load dataset and latest run |
-| `/api/generate` | Generate timetable |
-| `/api/import/section-wise` | Import local SECTION-WISE files if available |
-| `/api/rooms/free` | Check free rooms for a day/slot |
-| `/api/export/timetable.csv` | Export timetable as CSV |
-| `/api/export/timetable.pdf` | Export complete timetable as PDF |
-| `/api/export/section-pdfs.zip` | Export per-section PDF files in a ZIP |
-
-## Included Deliverables
-
-- Source code
-- Cleaned demo dataset
-- Final CCP Word report
-- Final CCP PowerPoint presentation
-- Dashboard screenshot
-- MIT license
-- One-command local run script
-
-## Data and Privacy Note
-
-Raw SECTION-WISE DOCX import files and the local SQLite database are intentionally not committed. They may contain institution-specific academic records or local runtime state. The repository includes cleaned JSON/CSV seed data so the project can still run after a fresh clone.
-
-Generated local files ignored by Git:
-
-- `.venv/`
-- `__pycache__/`
-- `data/*.sqlite3`
-- generated timetable ZIP files
-- raw `imports/` documents
+- Passwords are stored using scrypt hashing.
+- Sessions use opaque server-side tokens in HttpOnly cookies.
+- Scheduling and export APIs are tenant-scoped.
+- Administrator routes and institution-user routes are role protected.
+- Production mode requires secure configuration and must not use development defaults.
 
 ## License
 
-This project is released under the MIT License. See [LICENSE](LICENSE).
+No open-source license has been assigned yet. Add the intended license before distributing the project publicly.

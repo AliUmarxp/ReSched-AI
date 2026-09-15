@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from itertools import combinations
 from math import sqrt
+from random import Random
 from typing import Any
 
 
@@ -24,14 +25,25 @@ class Session:
 
 
 class Scheduler:
-    def __init__(self, dataset: dict[str, Any]):
+    def __init__(self, dataset: dict[str, Any], constraint_settings: list[dict[str, Any]] | None = None):
         self.dataset = dataset
+        self.constraint_settings = {
+            item["key"] if "key" in item else item["constraint_key"]: item
+            for item in (constraint_settings or [])
+        }
+        profile_weights = (dataset.get("aiProfile") or {}).get("weights", {})
+        self.score_weights = {
+            key: float(self.constraint_settings.get(key, {}).get("weight", 1.0))
+            * float(profile_weights.get(key, 1.0))
+            for key in ["compactness", "early_release", "day_fairness", "teacher_balance", "repeat_protection"]
+        }
         self.teachers = {item["id"]: item for item in dataset["teachers"]}
         self.courses = {item["id"]: item for item in dataset["courses"]}
         self.sections = {item["id"]: item for item in dataset["sections"]}
         self.rooms = {item["id"]: item for item in dataset["rooms"]}
         self.slots = {item["id"]: item for item in dataset["timeSlots"]}
         self.rejections: Counter[str] = Counter()
+        self.repeat_students = self._normalized_repeat_students()
         self.repeat_index = self._build_repeat_index()
         self.windows = self._build_windows()
         self.sessions = self._build_sessions()
@@ -88,28 +100,58 @@ class Scheduler:
         }
 
     def _construct_schedule(self) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-        entries: list[dict[str, Any]] = []
-        unscheduled: list[dict[str, Any]] = []
-        for session in self.sessions:
-            candidates = self._candidates(session, entries)
-            if candidates:
-                entries.append(candidates[0])
-                continue
-            unscheduled.append(
-                {
-                    "session_id": session.id,
-                    "section_id": session.section_id,
-                    "course_id": session.course_id,
-                    "weekly_slot_index": session.weekly_slot_index,
-                    "reason": "No feasible candidate under hard constraints",
-                    "blockers": self._estimate_blockers(session, entries),
-                }
-            )
-        return entries, unscheduled
+        best_entries: list[dict[str, Any]] = []
+        best_unscheduled: list[dict[str, Any]] = []
+        best_rank = (-len(self.sessions), float("-inf"))
+        for attempt in range(8):
+            rng = Random(attempt)
+            entries: list[dict[str, Any]] = []
+            unscheduled: list[dict[str, Any]] = []
+            for session in self.sessions:
+                candidates = self._candidates(session, entries)
+                if candidates:
+                    if attempt == 0:
+                        choice = candidates[0]
+                    else:
+                        pool_size = min(5, len(candidates))
+                        weights = list(range(pool_size, 0, -1))
+                        choice = rng.choices(candidates[:pool_size], weights=weights, k=1)[0]
+                    entries.append(choice)
+                    continue
+                unscheduled.append(
+                    {
+                        "session_id": session.id,
+                        "section_id": session.section_id,
+                        "course_id": session.course_id,
+                        "weekly_slot_index": session.weekly_slot_index,
+                        "reason": "No feasible candidate under enabled hard constraints",
+                        "blockers": self._estimate_blockers(session, entries),
+                    }
+                )
+            rank = (-len(unscheduled), self._partial_score(entries))
+            if rank > best_rank:
+                best_rank = rank
+                best_entries = entries
+                best_unscheduled = unscheduled
+            if not unscheduled:
+                break
+        return best_entries, best_unscheduled
+
+    def _hard_enabled(self, key: str) -> bool:
+        setting = self.constraint_settings.get(key)
+        if not setting:
+            return True
+        return bool(setting.get("enabled", True)) and setting.get("mode", "hard") == "hard"
+
+    def _soft_weight(self, key: str) -> float:
+        setting = self.constraint_settings.get(key)
+        if setting and (not setting.get("enabled", True) or setting.get("mode") == "off"):
+            return 0.0
+        return self.score_weights.get(key, 1.0)
 
     def _build_sessions(self) -> list[Session]:
         repeat_sensitive_keys = set()
-        for student in self.dataset["repeatStudents"]:
+        for student in self.repeat_students:
             for repeated in student["repeated_courses"]:
                 repeat_sensitive_keys.add((student["current_section"], None))
                 repeat_sensitive_keys.add((repeated["section_id"], repeated["course_id"]))
@@ -170,9 +212,30 @@ class Scheduler:
             total += sum(self._session_durations(self.courses[course_id]))
         return total
 
+    def _normalized_repeat_students(self) -> list[dict[str, Any]]:
+        normalized: list[dict[str, Any]] = []
+        for student in self.dataset.get("repeatStudents", []):
+            current_section = student.get("current_section")
+            if current_section not in self.sections:
+                continue
+            repeated_courses: list[dict[str, str]] = []
+            for repeated in student.get("repeated_courses", []):
+                course_id = repeated.get("course_id")
+                section_id = repeated.get("section_id")
+                if section_id not in self.sections or course_id not in self.courses:
+                    continue
+                if course_id not in self.sections[section_id].get("required_courses", []):
+                    continue
+                pair = {"course_id": course_id, "section_id": section_id}
+                if pair not in repeated_courses:
+                    repeated_courses.append(pair)
+            if repeated_courses:
+                normalized.append({**student, "current_section": current_section, "repeated_courses": repeated_courses})
+        return normalized
+
     def _build_repeat_index(self) -> dict[str, set[str]]:
         session_to_students: dict[str, set[str]] = defaultdict(set)
-        for student in self.dataset["repeatStudents"]:
+        for student in self.repeat_students:
             current_section = student["current_section"]
             for course_id in self.sections[current_section]["required_courses"]:
                 session_to_students[f"{current_section}::{course_id}"].add(student["id"])
@@ -231,6 +294,8 @@ class Scheduler:
             assigned_teacher = self.sections[section_id].get("course_teachers", {}).get(course_id)
             if assigned_teacher and assigned_teacher in self.teachers:
                 return [self.teachers[assigned_teacher]]
+        if not self._hard_enabled("expertise_rejections"):
+            return list(self.dataset["teachers"])
         course = self.courses[course_id]
         allowed = set(course["allowed_teachers"])
         return [
@@ -245,7 +310,8 @@ class Scheduler:
         return [
             room
             for room in self.dataset["rooms"]
-            if room["type"] == target_type and int(room["capacity"]) >= int(section["strength"])
+            if (not self._hard_enabled("room_type_rejections") or room["type"] == target_type)
+            and (not self._hard_enabled("capacity_rejections") or int(room["capacity"]) >= int(section["strength"]))
         ]
 
     def _search(
@@ -349,21 +415,21 @@ class Scheduler:
     ) -> str | None:
         course = self.courses[session.course_id]
         section = self.sections[session.section_id]
-        if session.course_id not in teacher["expertise_courses"]:
+        if self._hard_enabled("expertise_rejections") and session.course_id not in teacher["expertise_courses"]:
             return "expertise_rejections"
-        if teacher["id"] not in course["allowed_teachers"]:
+        if self._hard_enabled("expertise_rejections") and teacher["id"] not in course["allowed_teachers"]:
             return "expertise_rejections"
-        if not set(window["slot_ids"]).issubset(set(teacher["availability_slots"])):
+        if self._hard_enabled("availability_rejections") and not set(window["slot_ids"]).issubset(set(teacher["availability_slots"])):
             return "availability_rejections"
-        if self._is_friday_prayer_window(window):
+        if self._hard_enabled("friday_prayer_break_rejections") and self._is_friday_prayer_window(window):
             return "friday_prayer_break_rejections"
-        if self._window_crosses_break(window):
+        if self._hard_enabled("break_crossing_rejections") and self._window_crosses_break(window):
             return "break_crossing_rejections"
-        if session.is_lab and room["type"] != "lab":
+        if self._hard_enabled("room_type_rejections") and session.is_lab and room["type"] != "lab":
             return "lab_allocation_conflicts"
-        if not session.is_lab and room["type"] != "classroom":
+        if self._hard_enabled("room_type_rejections") and not session.is_lab and room["type"] != "classroom":
             return "room_type_rejections"
-        if int(room["capacity"]) < int(section["strength"]):
+        if self._hard_enabled("capacity_rejections") and int(room["capacity"]) < int(section["strength"]):
             return "capacity_rejections"
         projected_for_gap = entries + [
             {
@@ -373,25 +439,31 @@ class Scheduler:
                 "end_index": window["end_index"],
             }
         ]
-        if self._section_day_gaps(projected_for_gap, session.section_id, window["day"]) > self._max_section_day_gap(session.section_id):
+        if self._hard_enabled("section_gap_limit_rejections") and self._section_day_gaps(projected_for_gap, session.section_id, window["day"]) > self._max_section_day_gap(session.section_id):
             return "section_gap_limit_rejections"
         for entry in entries:
             # Consistent teacher for same section-course across all weekly sessions.
             if entry["section_id"] == session.section_id and entry["course_id"] == session.course_id:
-                if entry["teacher_id"] != teacher["id"]:
+                if self._hard_enabled("teacher_consistency_rejections") and entry["teacher_id"] != teacher["id"]:
                     return "teacher_consistency_rejections"
                 # Spread same course sessions across different days for better learning rhythm.
-                if entry["day"] == window["day"]:
+                if self._hard_enabled("course_day_spread_rejections") and entry["day"] == window["day"]:
                     return "course_day_spread_rejections"
             if not self._overlaps(entry, window):
                 continue
-            if entry["teacher_id"] == teacher["id"]:
+            if self._hard_enabled("teacher_clashes") and entry["teacher_id"] == teacher["id"]:
                 return "teacher_clashes"
-            if entry["room_id"] == room["id"]:
-                return "room_clashes"
-            if entry["section_id"] == session.section_id:
+            if self._hard_enabled("room_clashes") and entry["room_id"] == room["id"]:
+                concurrent = sum(
+                    1 for existing in entries
+                    if existing["room_id"] == room["id"] and self._overlaps(existing, window)
+                )
+                allowed = 2 if bool(room.get("allow_parallel_sessions", False)) else 1
+                if concurrent >= allowed:
+                    return "room_clashes"
+            if self._hard_enabled("section_clashes") and entry["section_id"] == session.section_id:
                 return "section_clashes"
-            if self._repeat_student_overlap(session.id, entry):
+            if self._hard_enabled("repeat_student_clashes") and self._repeat_student_overlap(session.id, entry):
                 return "repeat_student_clashes"
         return None
 
@@ -410,13 +482,15 @@ class Scheduler:
         return bool(set(entry["slot_ids"]) & set(window["slot_ids"]))
 
     def _repeat_student_overlap(self, session_id: str, entry: dict[str, Any]) -> bool:
-        left = self.repeat_index.get(session_id, set())
-        right = self.repeat_index.get(entry["id"], set())
-        if not left:
-            left = self.repeat_index.get(self._base_session_id(session_id), set())
-        if not right:
-            right = self.repeat_index.get(self._base_session_id(entry["id"]), set())
-        return bool(left & right)
+        return bool(
+            self._repeat_students_for_session(session_id)
+            & self._repeat_students_for_session(entry["id"])
+        )
+
+    def _repeat_students_for_session(self, session_id: str) -> set[str]:
+        return self.repeat_index.get(session_id, set()) or self.repeat_index.get(
+            self._base_session_id(session_id), set()
+        )
 
     def _base_session_id(self, session_id: str) -> str:
         parts = session_id.split("::")
@@ -451,9 +525,10 @@ class Scheduler:
         score += self._course_spread_score(projected, session)
 
         gap_count = self._section_day_gaps(projected, session.section_id, window["day"])
-        score -= gap_count * 12
+        compactness_weight = self._soft_weight("compactness")
+        score -= gap_count * 12 * compactness_weight
         if gap_count == 0:
-            score += 14
+            score += 14 * compactness_weight
             notes.append("Section day stays compact with no unnecessary internal gap.")
         else:
             notes.append(f"Section gap penalty applied: {gap_count} empty period(s).")
@@ -483,7 +558,7 @@ class Scheduler:
             notes.append("Soft penalty: section consecutive load is high.")
 
         early_bonus = max(0, 6 - window["end_index"]) * 4
-        score += early_bonus
+        score += early_bonus * self._soft_weight("early_release")
         if window["end_index"] <= 3:
             notes.append("This choice supports early release for the section.")
 
@@ -499,11 +574,12 @@ class Scheduler:
             for entry in entries
             if entry["teacher_id"] == teacher["id"] and entry["day"] == window["day"]
         ]
-        score -= len(same_day_teacher) * 7
+        teacher_weight = self._soft_weight("teacher_balance")
+        score -= len(same_day_teacher) * 7 * teacher_weight
         if len(same_day_teacher) == 0:
             notes.append("Teacher workload remains distributed for this day.")
         if len(same_day_teacher) >= int(teacher["max_lectures_per_day"]):
-            score -= 30
+            score -= 30 * teacher_weight
             notes.append("Teacher workload is near the daily limit.")
         # Penalize very large idle windows for teacher on same day.
         teacher_periods = []
@@ -532,7 +608,7 @@ class Scheduler:
         score -= max(0, room_spare - 10) * 0.3
 
         fairness = self._day_fairness_score(projected, session.section_id, window["day"])
-        score += fairness
+        score += fairness * self._soft_weight("day_fairness")
         if fairness > 0:
             notes.append("Day fairness recovery improved this section's weekly rhythm.")
         elif fairness < 0:
@@ -643,11 +719,11 @@ class Scheduler:
                 continue
             if left["teacher_id"] == right["teacher_id"]:
                 conflicts.append({"type": "teacher", "entries": [left["id"], right["id"]]})
-            if left["room_id"] == right["room_id"]:
+            if left["room_id"] == right["room_id"] and not bool(self.rooms[left["room_id"]].get("allow_parallel_sessions", False)):
                 conflicts.append({"type": "room", "entries": [left["id"], right["id"]]})
             if left["section_id"] == right["section_id"]:
                 conflicts.append({"type": "section", "entries": [left["id"], right["id"]]})
-            if self.repeat_index.get(left["id"], set()) & self.repeat_index.get(right["id"], set()):
+            if self._repeat_student_overlap(left["id"], right):
                 conflicts.append(
                     {"type": "repeat_student", "entries": [left["id"], right["id"]]}
                 )
@@ -737,7 +813,7 @@ class Scheduler:
     ) -> dict[str, Any]:
         scheduled = len(entries)
         total = len(self.sessions)
-        repeat_cases = len(self.dataset["repeatStudents"])
+        repeat_cases = len(self.repeat_students)
         lab_sessions = sum(1 for session in self.sessions if session.is_lab)
         classroom_count = sum(1 for room in self.dataset["rooms"] if room["type"] == "classroom")
         soft_warnings = self._soft_policy_warnings(entries)
@@ -928,6 +1004,6 @@ class Scheduler:
         }
 
 
-def generate_timetable(dataset: dict[str, Any]) -> dict[str, Any]:
-    scheduler = Scheduler(dataset)
+def generate_timetable(dataset: dict[str, Any], constraint_settings: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    scheduler = Scheduler(dataset, constraint_settings)
     return scheduler.run()

@@ -126,6 +126,37 @@ def _build_default_rooms() -> list[dict]:
     ]
 
 
+def _build_sample_repeat_students(sections: list[dict]) -> list[dict]:
+    sections_by_id = {section["id"]: section for section in sections}
+    sample_specs = [
+        ("rs-cs4-001", "Ali Raza", "cs-4-4th-se", [("cs216", "cs-3-3rd-se")]),
+        ("rs-cs4-002", "Maha Noor", "cs-4-4th-se", [("cs260", "cs-3-3rd-se")]),
+        ("rs-cy4-001", "Bilal Khan", "cy-4-4th-se", [("cs216", "cs-3-3rd-se")]),
+        ("rs-cy4-002", "Nida Fatima", "cy-4-4th-se", [("cs260", "ai-3-3rd-se")]),
+        ("rs-se4-001", "Hina Tariq", "se-4-4th-se", [("cs216", "cs-3-3rd-se")]),
+    ]
+    repeat_students: list[dict] = []
+    for student_id, name, current_section, repeated_pairs in sample_specs:
+        if current_section not in sections_by_id:
+            continue
+        repeated_courses = [
+            {"course_id": course_id, "section_id": section_id}
+            for course_id, section_id in repeated_pairs
+            if section_id in sections_by_id
+            and course_id in sections_by_id[section_id].get("required_courses", [])
+        ]
+        if repeated_courses:
+            repeat_students.append(
+                {
+                    "id": student_id,
+                    "name": name,
+                    "current_section": current_section,
+                    "repeated_courses": repeated_courses,
+                }
+            )
+    return repeat_students
+
+
 def import_sectionwise_dataset(base_dir: Path) -> dict:
     documents = sorted(base_dir.rglob("*.docx"))
     teachers: dict[str, dict] = {}
@@ -269,5 +300,5 @@ def import_sectionwise_dataset(base_dir: Path) -> dict:
         "courses": sorted(courses.values(), key=lambda item: item["name"]),
         "sections": sections,
         "rooms": _build_default_rooms(),
-        "repeatStudents": [],
+        "repeatStudents": _build_sample_repeat_students(sections),
     }

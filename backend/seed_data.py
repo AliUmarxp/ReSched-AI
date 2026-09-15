@@ -93,7 +93,7 @@ SOURCE_INSIGHTS = {
     "ai_ccp_mapping": [
         "Real section documents inform slot template, lab duration, room naming, and course catalog.",
         "CSP variables are section-course sessions; domains are teacher-room-time combinations.",
-        "Backtracking rejects teacher, room, section, capacity, availability, expertise, lab, and repeat-student clashes.",
+        "Multi-start scheduling rejects teacher, room, section, capacity, availability, expertise, lab, and repeat-student clashes.",
         "Heuristic scoring prefers compact days, early release, teacher balance, difficult courses early, and fair recovery after late days.",
     ],
 }
@@ -529,4 +529,11 @@ SEED_DATA = {
 
 
 def get_seed_data() -> dict:
-    return deepcopy(SEED_DATA)
+    dataset = deepcopy(SEED_DATA)
+    for course in dataset["courses"]:
+        is_lab = course.get("type") == "lab"
+        course.setdefault("credit_hours", 1 if is_lab else 3)
+        course.setdefault("contact_hours", 3 if is_lab else course["credit_hours"])
+        course.setdefault("weekly_frequency", 1 if is_lab else course["credit_hours"])
+        course["duration"] = 3 if is_lab else int(course.get("duration") or 1)
+    return dataset

@@ -6,47 +6,62 @@ from pathlib import Path
 from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from sqlalchemy.orm import Session
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import PageBreak, SimpleDocTemplate, Spacer, Paragraph, Table, TableStyle
 
+from .accounts import bootstrap_admin
+from .api_routes import router as account_router
+from .config import settings
+from .database import SessionLocal, init_database
+from .models import User, Workspace
 from .sectionwise_importer import import_sectionwise_dataset
 from .scheduler import generate_timetable
-from .store import ENTITY_NAMES, latest_run, load_dataset, save_entity_set, save_run, seed_database
+from .schemas import DatasetImportPayload, EntityPayload
+from .security import current_user, get_db, workspace_user
+from .tenant_store import (
+    ENTITY_NAMES,
+    DatasetValidationError,
+    get_constraint_settings,
+    latest_run,
+    load_dataset,
+    replace_dataset,
+    reset_workspace,
+    save_ai_profile,
+    save_entity_set,
+    save_run,
+    serialize_run,
+    validate_dataset,
+)
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 STATIC_DIR = ROOT_DIR / "static"
 
 
-class EntityPayload(BaseModel):
-    payload: Any
-
-
-class LoginPayload(BaseModel):
-    username: str
-    password: str
-
-
 app = FastAPI(title="ReSched AI", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=list(settings.allowed_origins),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.include_router(account_router)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.on_event("startup")
 def startup() -> None:
-    load_dataset()
+    init_database()
+    with SessionLocal() as db:
+        bootstrap_admin(db)
 
 
 def _default_ai_profile() -> dict[str, Any]:
@@ -84,97 +99,98 @@ def health() -> dict[str, str]:
     return {"status": "ok", "app": "ReSched AI"}
 
 
-@app.post("/api/auth/login")
-def login(body: LoginPayload) -> dict[str, Any]:
-    valid_users = {
-        "admin": "admin123",
-        "scheduler": "resched2026",
-    }
-    if valid_users.get(body.username) != body.password:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    return {"ok": True, "user": {"username": body.username, "role": "admin"}}
-
-
 @app.get("/api/data")
-def get_data() -> dict[str, Any]:
-    return {"dataset": load_dataset(), "latestRun": latest_run()}
+def get_data(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    dataset = load_dataset(db, user.id)
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    return {
+        "dataset": dataset,
+        "datasetVersion": workspace.dataset_version,
+        "validation": validate_dataset(dataset),
+        "latestRun": serialize_run(latest_run(db, user.id), workspace.dataset_version),
+    }
 
 
 @app.post("/api/seed")
-def reset_seed() -> dict[str, Any]:
-    dataset = seed_database()
-    return {"dataset": dataset, "latestRun": None}
+def reset_seed(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    dataset, version = reset_workspace(db, user.id, user.id)
+    return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
 
 
 @app.post("/api/import/section-wise")
-def import_section_wise() -> dict[str, Any]:
+def import_section_wise(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
     section_wise_root = ROOT_DIR / "imports" / "section-wise" / "SECTION-WISE"
     if not section_wise_root.exists():
         raise HTTPException(status_code=404, detail=f"Folder not found: {section_wise_root}")
     dataset = import_sectionwise_dataset(section_wise_root)
-    for key, value in dataset.items():
-        save_entity_set(key, value)
-    return {"dataset": load_dataset(), "latestRun": latest_run(), "importPath": str(section_wise_root)}
+    try:
+        saved, version = replace_dataset(db, user.id, dataset, user.id)
+    except DatasetValidationError as exc:
+        raise HTTPException(status_code=422, detail={"message": str(exc), "issues": exc.issues})
+    return {"dataset": saved, "datasetVersion": version, "latestRun": None, "importPath": str(section_wise_root)}
+
+
+@app.post("/api/import/dataset")
+def import_dataset(body: DatasetImportPayload, db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    try:
+        dataset, version = replace_dataset(db, user.id, body.dataset, user.id)
+    except DatasetValidationError as exc:
+        raise HTTPException(status_code=422, detail={"message": str(exc), "issues": exc.issues})
+    return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
 
 
 @app.put("/api/entities/{name}")
-def update_entity_set(name: str, body: EntityPayload) -> dict[str, Any]:
+def update_entity_set(name: str, body: EntityPayload, db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
     if name not in ENTITY_NAMES:
         raise HTTPException(status_code=404, detail=f"Unknown entity set: {name}")
-    dataset = save_entity_set(name, body.payload)
-    return {"dataset": dataset}
+    try:
+        dataset, version = save_entity_set(db, user.id, name, body.payload, user.id)
+    except DatasetValidationError as exc:
+        raise HTTPException(status_code=422, detail={"message": str(exc), "issues": exc.issues})
+    return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
 
 
 @app.post("/api/generate")
-def generate() -> dict[str, Any]:
-    dataset = load_dataset()
-    result = generate_timetable(dataset)
+def generate(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    dataset = load_dataset(db, user.id)
+    issues = validate_dataset(dataset)
+    if issues:
+        raise HTTPException(status_code=422, detail={"message": "Dataset is not ready for scheduling", "issues": issues})
+    constraints = get_constraint_settings(db, user.id)
+    result = generate_timetable(dataset, constraints)
     profile = _update_ai_profile(dataset, result)
-    save_entity_set("aiProfile", profile)
     result["aiProfile"] = profile
-    run = save_run(result)
-    return {"run": run}
+    save_ai_profile(db, user.id, profile)
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    run = save_run(db, user.id, workspace.dataset_version, result, user.id)
+    return {"run": serialize_run(run, workspace.dataset_version)}
 
 
 @app.get("/api/runs/latest")
-def get_latest_run() -> dict[str, Any]:
-    run = latest_run()
+def get_latest_run(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    run = latest_run(db, user.id)
     if not run:
         raise HTTPException(status_code=404, detail="No timetable generated yet")
-    return {"run": run}
+    return {"run": serialize_run(run, workspace.dataset_version)}
 
 
 @app.get("/api/rooms/free")
-def get_free_rooms(day: str, slot_id: str) -> dict[str, Any]:
-    run = latest_run()
-    dataset = load_dataset()
-    if not run:
+def get_free_rooms(day: str, slot_id: str, db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    run_row = latest_run(db, user.id)
+    dataset = load_dataset(db, user.id)
+    if not run_row:
         raise HTTPException(status_code=404, detail="No timetable generated yet")
-    occupied = {
-        entry["room_id"]
-        for entry in run["entries"]
-        if entry["day"].lower() == day.lower() and slot_id in entry["slot_ids"]
-    }
-    free_rooms = [room for room in dataset["rooms"] if room["id"] not in occupied]
+    run = run_row.payload
+    occupied_counts: dict[str, int] = {}
+    for entry in run["entries"]:
+        if entry["day"].lower() == day.lower() and slot_id in entry["slot_ids"]:
+            occupied_counts[entry["room_id"]] = occupied_counts.get(entry["room_id"], 0) + 1
+    free_rooms = [
+        room for room in dataset["rooms"]
+        if occupied_counts.get(room["id"], 0) < (2 if room.get("allow_parallel_sessions", False) else 1)
+    ]
     return {"day": day, "slot_id": slot_id, "freeRooms": free_rooms, "count": len(free_rooms)}
-
-
-@app.get("/api/benchmarks/inspirations")
-def benchmark_inspirations() -> dict[str, Any]:
-    return {
-        "sources": [
-            {"name": "UniTime", "url": "https://github.com/UniTime/unitime"},
-            {"name": "UniTime Highlights", "url": "https://www.unitime.org/unitime_intro.php"},
-            {"name": "FAST timetable helper examples", "url": "https://fast-nuces.ph4ntom.org/timetable"},
-        ],
-        "ideas_adopted": [
-            "Conflict-first scheduling with explainable reasoning",
-            "Room utilization and free-room lookup",
-            "Role-based admin login flow",
-            "Export-ready outputs (CSV + PDF)",
-            "Operational quality scorecards",
-        ],
-    }
 
 
 @app.get("/api/data-policy")
@@ -194,10 +210,14 @@ def data_policy() -> dict[str, Any]:
 
 
 @app.get("/api/export/timetable.csv")
-def export_csv() -> StreamingResponse:
-    run = latest_run()
-    if not run:
+def export_csv(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> StreamingResponse:
+    run_row = latest_run(db, user.id)
+    if not run_row:
         raise HTTPException(status_code=404, detail="No timetable generated yet")
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    if run_row.dataset_version != workspace.dataset_version:
+        raise HTTPException(status_code=409, detail="The timetable is stale. Regenerate it before export.")
+    run = run_row.payload
     output = io.StringIO()
     writer = csv.DictWriter(
         output,
@@ -225,12 +245,16 @@ def export_csv() -> StreamingResponse:
 
 
 @app.get("/api/export/timetable.pdf")
-def export_pdf() -> StreamingResponse:
-    run = latest_run()
-    if not run:
+def export_pdf(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> StreamingResponse:
+    run_row = latest_run(db, user.id)
+    if not run_row:
         raise HTTPException(status_code=404, detail="No timetable generated yet")
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    if run_row.dataset_version != workspace.dataset_version:
+        raise HTTPException(status_code=409, detail="The timetable is stale. Regenerate it before export.")
+    run = run_row.payload
 
-    dataset = load_dataset()
+    dataset = load_dataset(db, user.id)
     buffer = io.BytesIO()
     document = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=18, rightMargin=18, topMargin=16, bottomMargin=16)
     styles = getSampleStyleSheet()
@@ -249,11 +273,15 @@ def export_pdf() -> StreamingResponse:
 
 
 @app.get("/api/export/section-pdfs.zip")
-def export_section_pdfs_zip() -> StreamingResponse:
-    run = latest_run()
-    if not run:
+def export_section_pdfs_zip(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> StreamingResponse:
+    run_row = latest_run(db, user.id)
+    if not run_row:
         raise HTTPException(status_code=404, detail="No timetable generated yet")
-    dataset = load_dataset()
+    workspace = db.query(Workspace).filter(Workspace.user_id == user.id).one()
+    if run_row.dataset_version != workspace.dataset_version:
+        raise HTTPException(status_code=409, detail="The timetable is stale. Regenerate it before export.")
+    run = run_row.payload
+    dataset = load_dataset(db, user.id)
     zip_buffer = io.BytesIO()
     with ZipFile(zip_buffer, "w", ZIP_DEFLATED) as archive:
         for section_name, entries in sorted(run["views"]["section"].items()):
