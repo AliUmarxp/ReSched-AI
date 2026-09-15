@@ -23,7 +23,7 @@ from .database import SessionLocal, init_database
 from .models import User, Workspace
 from .sectionwise_importer import import_sectionwise_dataset
 from .scheduler import generate_timetable
-from .schemas import DatasetImportPayload, EntityPayload
+from .schemas import DatasetImportPayload, EntityBatchPayload, EntityPayload
 from .security import current_user, get_db, workspace_user
 from .tenant_store import (
     ENTITY_NAMES,
@@ -35,6 +35,7 @@ from .tenant_store import (
     reset_workspace,
     save_ai_profile,
     save_entity_set,
+    save_entity_sets,
     save_run,
     serialize_run,
     validate_dataset,
@@ -150,6 +151,15 @@ def update_entity_set(name: str, body: EntityPayload, db: Session = Depends(get_
         raise HTTPException(status_code=404, detail=f"Unknown entity set: {name}")
     try:
         dataset, version = save_entity_set(db, user.id, name, body.payload, user.id)
+    except DatasetValidationError as exc:
+        raise HTTPException(status_code=422, detail={"message": str(exc), "issues": exc.issues})
+    return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
+
+
+@app.put("/api/entities")
+def update_entity_sets(body: EntityBatchPayload, db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    try:
+        dataset, version = save_entity_sets(db, user.id, body.entities, user.id)
     except DatasetValidationError as exc:
         raise HTTPException(status_code=422, detail={"message": str(exc), "issues": exc.issues})
     return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
@@ -322,7 +332,7 @@ def _section_pdf_story(section_name: str, entries: list[dict[str, Any]], dataset
         f"ReSched AI | Quality Score: {run['quality']['overall']}/100 | Hard Conflicts: {run['report']['hard_conflicts']} | Timing: 09:00-16:30",
         styles["Normal"],
     )
-    return [title, subtitle, score, Spacer(1, 8), _section_grid_table(entries, dataset), Spacer(1, 10), _section_course_table(section, dataset)]
+    return [title, subtitle, score, Spacer(1, 8), _section_grid_table(entries, dataset), Spacer(1, 10), _section_course_table(section, entries, dataset)]
 
 
 def _section_grid_table(entries: list[dict[str, Any]], dataset: dict[str, Any]) -> Table:
@@ -402,15 +412,21 @@ def _section_grid_table(entries: list[dict[str, Any]], dataset: dict[str, Any]) 
     return table
 
 
-def _section_course_table(section: dict[str, Any], dataset: dict[str, Any]) -> Table:
+def _section_course_table(section: dict[str, Any], entries: list[dict[str, Any]], dataset: dict[str, Any]) -> Table:
     courses = {course["id"]: course for course in dataset["courses"]}
     teachers = {teacher["id"]: teacher for teacher in dataset["teachers"]}
     rows: list[list[Any]] = [["S No", "Course Code", "Cr Hrs", "Cont Hrs", "Course Title", "Faculty"]]
     for index, course_id in enumerate(section.get("required_courses", []), start=1):
         course = courses.get(course_id, {})
         code, title = _split_course_name(course.get("name", course_id.upper()))
+        scheduled_names = sorted({
+            str(entry.get("teacher_name", "")).strip()
+            for entry in entries
+            if entry.get("course_id") == course_id and entry.get("teacher_name")
+        })
         assigned_teacher = section.get("course_teachers", {}).get(course_id)
-        faculty = teachers.get(assigned_teacher, {}).get("name", "")
+        configured_name = teachers.get(assigned_teacher, {}).get("name", "")
+        faculty = ", ".join(scheduled_names) or configured_name
         rows.append(
             [
                 f"{index}.",

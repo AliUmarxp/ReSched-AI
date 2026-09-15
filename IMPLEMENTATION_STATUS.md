@@ -11,6 +11,9 @@ Last updated: 2026-09-16
 - Added tenant isolation tests covering empty onboarding, demo-only seeding, CRUD, deletion, and dataset import.
 - Normalized provider PostgreSQL URLs to the Psycopg 3 dialect and disabled persistent SQLAlchemy pools on Vercel serverless functions.
 - Made the demo dataset opt-in and assignable to one existing account without resetting that account's password; all other newly approved accounts start blank.
+- Added Programs management, guided Excel import, searchable faculty/course pickers, automatic eligibility synchronization, and a downloadable sample workbook.
+- Fixed blank Faculty cells in section PDF course tables by using the generated schedule assignment.
+- Reduced normal dataset loading by one redundant workspace query.
 - Corrected the HTTP test-client dependency used by CI.
 
 ## Latest delivery: shared rooms and interface refinement

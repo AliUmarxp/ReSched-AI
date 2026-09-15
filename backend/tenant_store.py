@@ -71,8 +71,10 @@ def ensure_workspace(db: Session, user_id: str, seed: bool = False) -> Workspace
 
 
 def load_dataset(db: Session, user_id: str) -> dict[str, Any]:
-    ensure_workspace(db, user_id)
     rows = db.scalars(select(EntitySet).where(EntitySet.user_id == user_id)).all()
+    if not rows:
+        ensure_workspace(db, user_id)
+        rows = db.scalars(select(EntitySet).where(EntitySet.user_id == user_id)).all()
     dataset = {row.name: row.payload for row in rows}
     user = db.get(User, user_id)
     for key, value in empty_dataset(user.institution_name if user else "").items():
@@ -177,6 +179,34 @@ def save_entity_set(db: Session, user_id: str, name: str, payload: Any, actor_id
     workspace.dataset_version += 1
     workspace.updated_at = utcnow()
     audit(db, "entity.updated", actor_id, user_id, entity=name, dataset_version=workspace.dataset_version)
+    db.commit()
+    return load_dataset(db, user_id), workspace.dataset_version
+
+
+def save_entity_sets(db: Session, user_id: str, entities: dict[str, Any], actor_id: str) -> tuple[dict[str, Any], int]:
+    unknown = sorted(set(entities) - ENTITY_NAMES)
+    if unknown:
+        raise DatasetValidationError([{"path": "entities", "code": "unknown_entities", "message": f"Unknown entity sets: {', '.join(unknown)}"}])
+    workspace = ensure_workspace(db, user_id)
+    candidate = load_dataset(db, user_id)
+    candidate.update(entities)
+    issues = validate_dataset(candidate, require_schedule_ready=False)
+    if issues:
+        raise DatasetValidationError(issues)
+    current = {
+        row.name: row
+        for row in db.scalars(select(EntitySet).where(EntitySet.user_id == user_id, EntitySet.name.in_(entities))).all()
+    }
+    for name, payload in entities.items():
+        entity = current.get(name)
+        if entity:
+            entity.payload = payload
+            entity.updated_at = utcnow()
+        else:
+            db.add(EntitySet(user_id=user_id, name=name, payload=payload))
+    workspace.dataset_version += 1
+    workspace.updated_at = utcnow()
+    audit(db, "entities.updated", actor_id, user_id, entities=sorted(entities), dataset_version=workspace.dataset_version)
     db.commit()
     return load_dataset(db, user_id), workspace.dataset_version
 

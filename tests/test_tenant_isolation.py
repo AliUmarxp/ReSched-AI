@@ -5,7 +5,7 @@ from sqlalchemy.pool import StaticPool
 from backend.database import Base
 from backend.models import User
 from backend.seed_data import get_seed_data
-from backend.tenant_store import ensure_workspace, load_dataset, replace_dataset, save_entity_set
+from backend.tenant_store import ensure_workspace, load_dataset, replace_dataset, save_entity_set, save_entity_sets
 
 
 def tenant_session():
@@ -131,3 +131,20 @@ def test_missing_demo_is_not_created_without_an_explicit_password(monkeypatch):
 
     assert accounts.bootstrap_demo(db) is None
     assert db.query(User).count() == 0
+
+
+def test_related_teacher_and_course_updates_are_atomic_and_tenant_scoped():
+    db = tenant_session()
+    first = add_user(db, "linked-first")
+    second = add_user(db, "linked-second")
+    ensure_workspace(db, first.id, seed=False)
+    ensure_workspace(db, second.id, seed=False)
+    db.commit()
+
+    teacher = {"id": "t-a", "name": "Dr. A", "expertise_courses": ["cs101"], "availability_slots": [], "max_lectures_per_day": 3}
+    course = {"id": "cs101", "name": "CS101 Computing", "type": "theory", "duration": 1, "credit_hours": 3, "contact_hours": 3, "weekly_frequency": 3, "difficulty_level": 2, "allowed_teachers": ["t-a"]}
+    save_entity_sets(db, first.id, {"teachers": [teacher], "courses": [course]}, first.id)
+
+    assert load_dataset(db, first.id)["teachers"][0]["expertise_courses"] == ["cs101"]
+    assert load_dataset(db, first.id)["courses"][0]["allowed_teachers"] == ["t-a"]
+    assert load_dataset(db, second.id)["teachers"] == []

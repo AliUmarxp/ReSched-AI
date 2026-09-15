@@ -48,6 +48,10 @@ class EntityPayload(BaseModel):
     payload: Any
 
 
+class EntityBatchPayload(BaseModel):
+    entities: dict[str, Any]
+
+
 class ConstraintUpdate(BaseModel):
     constraint_key: str
     enabled: bool

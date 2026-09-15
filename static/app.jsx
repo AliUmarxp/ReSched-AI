@@ -89,6 +89,16 @@ const API = {
     if (!response.ok) throw new Error(apiErrorMessage(result, "Unable to save data"));
     return result;
   },
+  async saveEntities(entities) {
+    const response = await fetch("/api/entities", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entities }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(apiErrorMessage(result, "Unable to save related data"));
+    return result;
+  },
   async generate() {
     const response = await fetch("/api/generate", { method: "POST" });
     const result = await response.json();
@@ -127,6 +137,7 @@ const API = {
 
 const USER_NAV = [
   ["dashboard", "Dashboard", "layout-dashboard"],
+  ["programs", "Programs", "graduation-cap"],
   ["teachers", "Teachers", "user-round-check"],
   ["courses", "Courses", "book-open-check"],
   ["sections", "Sections", "users-round"],
@@ -219,6 +230,71 @@ function weeklyPattern(course) {
 function displayValue(value) {
   if (Array.isArray(value)) return toCsvText(value);
   return value === undefined || value === null || value === "" ? "—" : value;
+}
+
+function listValue(value) {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function workbookRow(row) {
+  return Object.fromEntries(Object.entries(row).map(([key, value]) => [
+    String(key).trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, ""),
+    value,
+  ]));
+}
+
+async function parseExcelDataset(file) {
+  if (!window.XLSX) throw new Error("Excel importer is still loading. Please try again.");
+  const workbook = window.XLSX.read(await file.arrayBuffer(), { type: "array" });
+  const read = (sheetName) => {
+    const actual = workbook.SheetNames.find((name) => name.toLowerCase() === sheetName.toLowerCase());
+    if (!actual) return null;
+    return window.XLSX.utils.sheet_to_json(workbook.Sheets[actual], { defval: "", raw: true }).map(workbookRow);
+  };
+  const cleanRows = (rows) => (rows || []).filter((row) => Object.values(row).some((value) => String(value).trim()));
+  const dataset = {};
+  const programs = read("Programs");
+  if (programs) dataset.programs = cleanRows(programs).map((row) => ({
+    id: String(row.id || normalizeId(row.code || row.name)), name: String(row.name || "").trim(),
+    code: String(row.code || "").trim(), degree: String(row.degree || "").trim(),
+    semesters: Number(row.semesters || 8), department: String(row.department || row.faculty || "").trim(),
+  }));
+  const teachers = read("Teachers");
+  if (teachers) dataset.teachers = cleanRows(teachers).map((row) => ({
+    id: String(row.id || normalizeId(row.name)), name: String(row.name || "").trim(),
+    expertise_courses: listValue(row.expertise_courses), availability_slots: listValue(row.availability_slots),
+    max_lectures_per_day: Number(row.max_lectures_per_day || 3),
+  }));
+  const courses = read("Courses");
+  if (courses) dataset.courses = cleanRows(courses).map((row) => ({
+    id: String(row.id || row.code || normalizeId(row.name)).toLowerCase(), name: String(row.name || row.course_title || "").trim(),
+    type: String(row.type || "theory").toLowerCase(), duration: Number(row.duration || (String(row.type).toLowerCase() === "lab" ? 3 : 1)),
+    credit_hours: Number(row.credit_hours || 3), contact_hours: Number(row.contact_hours || row.credit_hours || 3),
+    weekly_frequency: Number(row.weekly_frequency || row.credit_hours || 3), difficulty_level: Number(row.difficulty_level || 3),
+    allowed_teachers: listValue(row.allowed_teachers),
+  }));
+  const sections = read("Sections");
+  if (sections) dataset.sections = cleanRows(sections).map((row) => ({
+    id: String(row.id || normalizeId(row.name)), program: String(row.program || "").trim(), degree: String(row.degree || "").trim(),
+    semester: Number(row.semester || 1), cohort: String(row.cohort || "").trim(), name: String(row.name || "").trim(),
+    strength: Number(row.strength || 1), required_courses: listValue(row.required_courses), course_teachers: {},
+  }));
+  const rooms = read("Rooms");
+  if (rooms) dataset.rooms = cleanRows(rooms).map((row) => ({
+    id: String(row.id || normalizeId(row.name)), name: String(row.name || "").trim(), type: String(row.type || "classroom").toLowerCase(),
+    capacity: Number(row.capacity || 1), allow_parallel_sessions: ["true", "yes", "1", "allowed"].includes(String(row.allow_parallel_sessions).toLowerCase()),
+  }));
+  const repeats = read("Repeat Students");
+  if (repeats) dataset.repeatStudents = cleanRows(repeats).map((row) => ({
+    id: String(row.id || normalizeId(row.name)), name: String(row.name || "").trim(), current_section: String(row.current_section || "").trim(),
+    repeated_courses: listValue(row.repeated_courses).map((item) => {
+      const [course_id, section_id] = item.split("@").map((part) => part.trim());
+      return { course_id, section_id };
+    }).filter((item) => item.course_id && item.section_id),
+  }));
+  if (!Object.keys(dataset).length) throw new Error("No supported sheets found. Use the ReSched Excel template.");
+  return dataset;
 }
 
 function formatCell(field, row) {
@@ -332,9 +408,34 @@ function App() {
   async function saveEntity(name, payload) {
     setBusy(true);
     try {
-      const response = await API.saveEntity(name, payload);
+      let response;
+      if (name === "teachers") {
+        const validTeacherIds = new Set(payload.map((teacher) => teacher.id));
+        const courses = data.courses.map((course) => {
+          const allowed = new Set((course.allowed_teachers || []).filter((id) => validTeacherIds.has(id)));
+          payload.forEach((teacher) => {
+            if ((teacher.expertise_courses || []).includes(course.id)) allowed.add(teacher.id);
+            else allowed.delete(teacher.id);
+          });
+          return { ...course, allowed_teachers: Array.from(allowed) };
+        });
+        response = await API.saveEntities({ teachers: payload, courses });
+      } else if (name === "courses") {
+        const validCourseIds = new Set(payload.map((course) => course.id));
+        const teachers = data.teachers.map((teacher) => {
+          const expertise = new Set((teacher.expertise_courses || []).filter((id) => validCourseIds.has(id)));
+          payload.forEach((course) => {
+            if ((course.allowed_teachers || []).includes(teacher.id)) expertise.add(course.id);
+            else expertise.delete(course.id);
+          });
+          return { ...teacher, expertise_courses: Array.from(expertise) };
+        });
+        response = await API.saveEntities({ courses: payload, teachers });
+      } else {
+        response = await API.saveEntity(name, payload);
+      }
       setData(response.dataset);
-      setNotice("Saved.");
+      setNotice(name === "teachers" || name === "courses" ? "Saved. Faculty eligibility was synchronized automatically." : "Saved.");
     } catch (error) {
       setNotice(error.message);
     } finally {
@@ -354,13 +455,21 @@ function App() {
 
   async function importDataset(file) {
     if (!file) return;
-    const text = await file.text();
-    const payload = JSON.parse(text);
-    const result = await API.importDataset(payload);
-    setData(result.dataset);
-    setRun(null);
-    setSelectedEntry(null);
-    setNotice("Dataset imported.");
+    setBusy(true);
+    setNotice("Validating import...");
+    try {
+      const isExcel = /\.xlsx?$/i.test(file.name);
+      const payload = isExcel ? await parseExcelDataset(file) : JSON.parse(await file.text());
+      const result = await API.importDataset(payload);
+      setData(result.dataset);
+      setRun(null);
+      setSelectedEntry(null);
+      setNotice(`${isExcel ? "Excel workbook" : "Dataset"} imported successfully.`);
+    } catch (error) {
+      setNotice(error.message || "Import failed. Check the template fields and references.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   const page = auth?.role === "admin" ? (
@@ -613,23 +722,26 @@ function AdminDashboard({ setActivePage }) {
 
 function PageRouter(props) {
   const { activePage, data, run } = props;
+  if (activePage === "programs") {
+    return <EntityManager key="programs" title="Programs" name="programs" rows={data.programs} fields={programFields()} onSave={props.saveEntity} />;
+  }
   if (activePage === "teachers") {
-    return <EntityManager title="Teachers" name="teachers" rows={data.teachers} fields={teacherFields(data)} onSave={props.saveEntity} />;
+    return <EntityManager key="teachers" title="Teachers" name="teachers" rows={data.teachers} fields={teacherFields(data)} onSave={props.saveEntity} />;
   }
   if (activePage === "courses") {
-    return <EntityManager title="Courses" name="courses" rows={data.courses} fields={courseFields(data)} onSave={props.saveEntity} />;
+    return <EntityManager key="courses" title="Courses" name="courses" rows={data.courses} fields={courseFields(data)} onSave={props.saveEntity} />;
   }
   if (activePage === "sections") {
-    return <EntityManager title="Sections" name="sections" rows={data.sections} fields={sectionFields(data)} onSave={props.saveEntity} />;
+    return <EntityManager key="sections" title="Sections" name="sections" rows={data.sections} fields={sectionFields(data)} onSave={props.saveEntity} />;
   }
   if (activePage === "sectionPlan") {
     return <SectionPlanner data={data} saveEntity={props.saveEntity} />;
   }
   if (activePage === "rooms") {
-    return <EntityManager title="Rooms and Labs" name="rooms" rows={data.rooms} fields={roomFields()} onSave={props.saveEntity} />;
+    return <EntityManager key="rooms" title="Rooms and Labs" name="rooms" rows={data.rooms} fields={roomFields()} onSave={props.saveEntity} />;
   }
   if (activePage === "repeat") {
-    return <EntityManager title="Repeat Students" name="repeatStudents" rows={data.repeatStudents} fields={repeatFields(data)} onSave={props.saveEntity} />;
+    return <EntityManager key="repeatStudents" title="Repeat Students" name="repeatStudents" rows={data.repeatStudents} fields={repeatFields(data)} onSave={props.saveEntity} />;
   }
   if (activePage === "constraints") {
     return <ConstraintsPage />;
@@ -819,18 +931,23 @@ function EntityManager({ title, name, rows, fields, onSave }) {
   const selected = rows.find((row) => row.id === selectedId) || rows[0] || null;
   const [draft, setDraft] = useState(selected || {});
   const [query, setQuery] = useState("");
+  const [formError, setFormError] = useState("");
   const tableFields = fields.filter((field) => !field.hideInTable);
   const visibleRows = rows.filter((row) => !query.trim() || Object.values(row).some((value) => String(value).toLowerCase().includes(query.trim().toLowerCase())));
 
   useEffect(() => {
-    const next = rows.find((row) => row.id === selectedId) || rows[0] || {};
-    setSelectedId(next.id || "");
-    setDraft(next);
-  }, [rows, selectedId]);
+    const next = rows.find((row) => row.id === selectedId);
+    if (next) setDraft(next);
+    else if (!String(selectedId).startsWith("__new__")) {
+      setSelectedId(rows[0]?.id || "");
+      setDraft(rows[0] || {});
+    }
+  }, [rows]);
 
   function selectRow(row) {
     setSelectedId(row.id);
     setDraft(row);
+    setFormError("");
   }
 
   function update(field, value) {
@@ -843,24 +960,32 @@ function EntityManager({ title, name, rows, fields, onSave }) {
   function addNew() {
     const base = fields.reduce((acc, field) => {
       if (field.type === "number") acc[field.key] = field.default ?? 0;
-      else if (field.type === "tags" || field.type === "slotTags" || field.type === "slotMatrix" || field.type === "coursePairs" || field.type === "coursePicker") acc[field.key] = [];
+      else if (field.type === "slotMatrix") acc[field.key] = field.default ?? (field.slots || []).map((slot) => slot.id);
+      else if (["tags", "slotTags", "coursePairs", "coursePicker", "teacherPicker"].includes(field.type)) acc[field.key] = [];
       else acc[field.key] = field.default ?? "";
       return acc;
     }, {});
-    base.id = `${name.slice(0, 2)}-${Date.now().toString(36)}`;
-    setSelectedId(base.id);
+    base.id = "";
+    setSelectedId(`__new__-${Date.now()}`);
     setDraft(base);
+    setFormError("");
   }
 
   async function save() {
     const normalized = { ...draft };
-    if (!normalized.id) normalized.id = normalizeId(normalized.name || Date.now());
+    const missing = fields.filter((field) => field.required && !String(normalized[field.key] ?? "").trim());
+    if (missing.length) {
+      setFormError(`Complete: ${missing.map((field) => field.label).join(", ")}`);
+      return;
+    }
+    if (!normalized.id) normalized.id = normalizeId(normalized.code || normalized.name || Date.now());
     const exists = rows.some((row) => row.id === normalized.id);
     const nextRows = exists
       ? rows.map((row) => (row.id === normalized.id ? normalized : row))
       : [...rows, normalized];
     await onSave(name, nextRows);
     setSelectedId(normalized.id);
+    setFormError("");
   }
 
   async function remove() {
@@ -915,23 +1040,30 @@ function EntityManager({ title, name, rows, fields, onSave }) {
       </div>
 
       <div className="panel p-5">
-        <h3 className="text-lg font-black">Editor</h3>
+        <h3 className="text-lg font-black">{String(selectedId).startsWith("__new__") ? `Add ${title.replace(/s$/, "")}` : `Edit ${title.replace(/s$/, "")}`}</h3>
+        <p className="mt-1 text-xs text-slate-500">Fields marked * are required. IDs are generated from the name or code when left blank.</p>
         <div className="mt-4 grid gap-3">
           {fields.map((field) => (
             <label key={field.key} className="grid gap-1.5 text-sm">
-              <span className="font-bold text-slate-700">{field.label}</span>
+              <span className="font-bold text-slate-700">{field.label}{field.required ? " *" : ""}</span>
               {field.type === "boolean" ? (
                 <button type="button" role="switch" aria-checked={Boolean(draft[field.key])} className={`toggle-field ${draft[field.key] ? "on" : ""}`} onClick={() => update(field, !draft[field.key])}>
                   <span className="toggle-knob" /><span>{draft[field.key] ? "Allowed" : "Not allowed"}</span>
                 </button>
               ) : field.type === "select" ? (
                 <select className="field" value={draft[field.key] ?? ""} onChange={(event) => update(field, event.target.value)}>
+                  <option value="">Select {field.label.toLowerCase()}</option>
                   {(field.options || []).map((option) => (
                     <option key={option} value={option}>
                       {option}
                     </option>
                   ))}
                 </select>
+              ) : field.type === "creatableSelect" ? (
+                <React.Fragment>
+                  <input className="field" list={`${name}-${field.key}-options`} placeholder={field.placeholder || `Select or type ${field.label.toLowerCase()}`} value={draft[field.key] ?? ""} onChange={(event) => update(field, event.target.value)} />
+                  <datalist id={`${name}-${field.key}-options`}>{(field.options || []).map((option) => <option key={option} value={option} />)}</datalist>
+                </React.Fragment>
               ) : field.type === "slotMatrix" ? (
                 <SlotMatrix
                   slots={field.slots || []}
@@ -944,6 +1076,8 @@ function EntityManager({ title, name, rows, fields, onSave }) {
                   value={draft[field.key] || []}
                   onChange={(next) => update(field, next)}
                 />
+              ) : field.type === "teacherPicker" ? (
+                <TeacherPicker teachers={field.teachers || []} value={draft[field.key] || []} onChange={(next) => update(field, next)} />
               ) : field.type === "coursePairs" ? (
                 <RepeatCoursePicker
                   courses={field.courses || []}
@@ -961,6 +1095,9 @@ function EntityManager({ title, name, rows, fields, onSave }) {
                 <input
                   className="field"
                   type={field.type === "number" ? "number" : "text"}
+                  min={field.min}
+                  max={field.max}
+                  placeholder={field.placeholder || ""}
                   value={draft[field.key] ?? ""}
                   onChange={(event) => update(field, event.target.value)}
                 />
@@ -969,6 +1106,7 @@ function EntityManager({ title, name, rows, fields, onSave }) {
             </label>
           ))}
         </div>
+        {formError ? <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700" role="alert">{formError}</div> : null}
         <div className="mt-5 flex flex-col gap-2 sm:flex-row">
           <button type="button" className="btn btn-primary" onClick={save}>
             <Icon name="save" />
@@ -1055,6 +1193,8 @@ function SlotMatrix({ slots, value, onChange }) {
 
 function CoursePicker({ courses, value, onChange }) {
   const selected = new Set(value || []);
+  const [query, setQuery] = useState("");
+  const visible = courses.filter((course) => `${course.id} ${course.name}`.toLowerCase().includes(query.toLowerCase()));
   function toggle(courseId) {
     const next = new Set(selected);
     if (next.has(courseId)) next.delete(courseId);
@@ -1062,9 +1202,11 @@ function CoursePicker({ courses, value, onChange }) {
     onChange(Array.from(next));
   }
   return (
-    <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-2">
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <input className="field mb-2 bg-white" type="search" placeholder="Search available courses..." value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="max-h-72 overflow-y-auto">
       <div className="grid gap-2">
-        {courses.map((course) => (
+        {visible.map((course) => (
           <button
             key={course.id}
             type="button"
@@ -1084,6 +1226,34 @@ function CoursePicker({ courses, value, onChange }) {
             </div>
           </button>
         ))}
+        {!visible.length ? <div className="p-3 text-sm font-bold text-slate-500">No matching courses</div> : null}
+      </div>
+      </div>
+    </div>
+  );
+}
+
+function TeacherPicker({ teachers, value, onChange }) {
+  const selected = new Set(value || []);
+  const [query, setQuery] = useState("");
+  const visible = teachers.filter((teacher) => `${teacher.id} ${teacher.name}`.toLowerCase().includes(query.toLowerCase()));
+  function toggle(teacherId) {
+    const next = new Set(selected);
+    if (next.has(teacherId)) next.delete(teacherId);
+    else next.add(teacherId);
+    onChange(Array.from(next));
+  }
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+      <input className="field mb-2 bg-white" type="search" placeholder="Search available faculty..." value={query} onChange={(event) => setQuery(event.target.value)} />
+      <div className="max-h-64 overflow-y-auto grid gap-2">
+        {visible.map((teacher) => (
+          <button key={teacher.id} type="button" className={`flex items-center justify-between rounded-lg border p-3 text-left ${selected.has(teacher.id) ? "border-teal bg-emerald-50" : "border-slate-200 bg-white"}`} onClick={() => toggle(teacher.id)}>
+            <span><span className="block text-sm font-black text-ink">{teacher.name}</span><span className="text-xs font-bold text-slate-500">{teacher.id.toUpperCase()}</span></span>
+            <span className={`grid h-6 w-6 place-items-center rounded-md text-xs font-black ${selected.has(teacher.id) ? "bg-teal text-white" : "bg-slate-100 text-slate-400"}`}>{selected.has(teacher.id) ? "✓" : "+"}</span>
+          </button>
+        ))}
+        {!visible.length ? <div className="p-3 text-sm font-bold text-slate-500">No faculty added yet</div> : null}
       </div>
     </div>
   );
@@ -1247,38 +1417,49 @@ function SectionPlanner({ data, saveEntity }) {
   );
 }
 
+function programFields() {
+  return [
+    { key: "id", label: "Program ID", hint: "Optional. Generated from code or name." },
+    { key: "name", label: "Program Name", required: true, placeholder: "BS Computer Science" },
+    { key: "code", label: "Short Code", required: true, placeholder: "BSCS" },
+    { key: "degree", label: "Degree", placeholder: "Bachelor of Science" },
+    { key: "semesters", label: "Semesters", type: "number", default: 8, min: 1, max: 16 },
+    { key: "department", label: "Department / Faculty", placeholder: "Faculty of Computing" },
+  ];
+}
+
 function teacherFields(data) {
   return [
-    { key: "id", label: "ID" },
-    { key: "name", label: "Name" },
-    { key: "expertise_courses", label: "Expertise", type: "tags", hint: "Course IDs separated by commas" },
-    { key: "availability_slots", label: "Availability Matrix", type: "slotMatrix", slots: data.timeSlots, hideInTable: true },
-    { key: "max_lectures_per_day", label: "Max/day", type: "number", default: 3 },
+    { key: "id", label: "Faculty ID", hint: "Optional. Generated from the faculty name." },
+    { key: "name", label: "Faculty Name", required: true, placeholder: "Dr. Ayesha Khan" },
+    { key: "expertise_courses", label: "Course Expertise", type: "coursePicker", courses: data.courses, hint: "Search and select every course this faculty member can teach." },
+    { key: "availability_slots", label: "Availability Matrix", type: "slotMatrix", slots: data.timeSlots, default: data.timeSlots.map((slot) => slot.id), hint: "New faculty are available all week by default. Click a day or period to block unavailable time.", hideInTable: true },
+    { key: "max_lectures_per_day", label: "Maximum Lectures / Day", type: "number", default: 3, min: 1, max: 8 },
   ];
 }
 
 function courseFields(data) {
   return [
-    { key: "id", label: "ID" },
-    { key: "name", label: "Course" },
+    { key: "id", label: "Course Code", required: true, placeholder: "CS216" },
+    { key: "name", label: "Course Title", required: true, placeholder: "CS216 Data Structures" },
     { key: "type", label: "Type", type: "select", options: ["theory", "lab"], default: "theory" },
-    { key: "duration", label: "Duration", type: "number", default: 1 },
-    { key: "credit_hours", label: "Credit Hours", type: "number", default: 3 },
-    { key: "contact_hours", label: "Contact Hours", type: "number", default: 3 },
-    { key: "weekly_frequency", label: "Lectures/Week", type: "number", default: 3 },
-    { key: "difficulty_level", label: "Difficulty", type: "number", default: 3 },
-    { key: "allowed_teachers", label: "Allowed Teachers", type: "tags", hint: "Teacher IDs separated by commas", hideInTable: true },
+    { key: "duration", label: "Session Duration (Periods)", type: "number", default: 1, min: 1, max: 3 },
+    { key: "credit_hours", label: "Credit Hours", type: "number", default: 3, min: 1, max: 6 },
+    { key: "contact_hours", label: "Contact Hours", type: "number", default: 3, min: 1, max: 10 },
+    { key: "weekly_frequency", label: "Sessions / Week", type: "number", default: 3, min: 1, max: 6 },
+    { key: "difficulty_level", label: "Difficulty (1-5)", type: "number", default: 3, min: 1, max: 5 },
+    { key: "allowed_teachers", label: "Eligible Faculty", type: "teacherPicker", teachers: data.teachers, hint: "Search and select faculty who can teach this course.", hideInTable: true },
   ];
 }
 
 function sectionFields(data) {
   return [
-    { key: "id", label: "ID" },
-    { key: "program", label: "Program", type: "select", options: data.programs.map((item) => item.name) },
+    { key: "id", label: "Section ID", hint: "Optional. Generated from the section name." },
+    { key: "program", label: "Program", type: "creatableSelect", options: data.programs.map((item) => item.name), required: true, hint: "Select a saved program or type a new program name." },
     { key: "degree", label: "Degree" },
     { key: "semester", label: "Semester", type: "number", default: 1 },
     { key: "cohort", label: "Cohort" },
-    { key: "name", label: "Section" },
+    { key: "name", label: "Section", required: true, placeholder: "BSCS-3A" },
     { key: "strength", label: "Strength", type: "number", default: 35 },
     { key: "required_courses", label: "Required Courses", type: "coursePicker", courses: data.courses, hideInTable: true },
   ];
@@ -1286,8 +1467,8 @@ function sectionFields(data) {
 
 function roomFields() {
   return [
-    { key: "id", label: "ID" },
-    { key: "name", label: "Room/Lab" },
+    { key: "id", label: "Room ID", hint: "Optional. Generated from the room name." },
+    { key: "name", label: "Room / Lab Name", required: true, placeholder: "Room 204" },
     { key: "type", label: "Type", type: "select", options: ["classroom", "lab"], default: "classroom" },
     { key: "capacity", label: "Capacity", type: "number", default: 40 },
     { key: "allow_parallel_sessions", label: "Shared at Same Time", type: "boolean", default: false, hint: "Opt in to allow a maximum of two simultaneous sessions in this room. Teacher and section collision rules still apply." },
@@ -1296,8 +1477,8 @@ function roomFields() {
 
 function repeatFields(data) {
   return [
-    { key: "id", label: "ID" },
-    { key: "name", label: "Student" },
+    { key: "id", label: "Student ID", required: true, placeholder: "2024-CS-001" },
+    { key: "name", label: "Student Name", required: true },
     { key: "current_section", label: "Current Section", type: "select", options: data.sections.map((item) => item.id) },
     { key: "repeated_courses", label: "Repeated Courses", type: "coursePairs", courses: data.courses, sections: data.sections },
   ];
@@ -1447,8 +1628,9 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
   return (
     <div className="grid gap-5">
       <section className="panel p-5">
-        <h2 className="text-xl font-black">Generate Timetable</h2>
-        <div className="mt-5 grid gap-3">
+        <h2 className="text-xl font-black">Generate and Exchange Data</h2>
+        <p className="mt-1 text-sm text-slate-600">Use the Excel template for fast setup, or maintain records manually from the workspace modules.</p>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
           <button className="btn btn-primary" type="button" onClick={runScheduler} disabled={busy}>
             <Icon name="wand-sparkles" />
             Generate Schedule
@@ -1473,15 +1655,22 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
             <Icon name="database-backup" />
             Export Dataset
           </button>
+          <a className="btn btn-secondary" href="/static/templates/resched-data-entry-template.xlsx" download>
+            <Icon name="sheet" />
+            Download Excel Template
+          </a>
           <label className="btn btn-secondary cursor-pointer">
             <Icon name="upload" />
-            Import Dataset
-            <input type="file" accept="application/json" className="hidden" onChange={(event) => importDataset(event.target.files[0])} />
+            Import Excel or JSON
+            <input type="file" accept=".xlsx,.xls,application/json" className="hidden" onChange={(event) => importDataset(event.target.files[0])} />
           </label>
           {auth?.is_demo ? <button className="btn btn-danger" type="button" onClick={resetSeed}>
             <Icon name="rotate-ccw" />
             Restore Demo Data
           </button> : null}
+        </div>
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          Recommended order: Programs → Courses → Teachers → Sections → Rooms → Repeat Students. Comma-separated IDs in the workbook create relationships automatically.
         </div>
       </section>
 

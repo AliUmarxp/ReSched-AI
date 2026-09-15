@@ -11,5 +11,7 @@ node_modules/
 dist/
 coverage/
 imports/
+artifact-work/
+outputs/
 presentation pptx and report word file/
 data/*.zip

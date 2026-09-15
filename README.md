@@ -8,6 +8,7 @@ ReSched is a multi-tenant academic scheduling platform for universities and scho
 - Strictly separated administrator and registrar workspaces
 - Isolated data, policies, schedules, and exports for every account
 - Courses, teachers, sections, rooms/labs, repeat students, and section plans
+- Dedicated program management with program code, degree, semester count, and department fields
 - Credit hours, contact hours, weekly frequency, and session duration support
 - Teacher availability and course eligibility controls
 - Configurable scheduling constraints with clear applied/ignored states
@@ -17,6 +18,7 @@ ReSched is a multi-tenant academic scheduling platform for universities and scho
 - Timetable views by section, teacher, room, and lab
 - Availability lookup, quality reporting, CSV/PDF export, and per-section PDF bundles
 - Dataset import/export, version tracking, stale-run protection, and audit events
+- Guided Excel workbook import with linked Programs, Courses, Teachers, Sections, Rooms, and Repeat Students sheets
 
 ## Roles
 
@@ -82,11 +84,17 @@ Authenticated users can export:
 
 Schedules become stale when source data or constraints change and must be regenerated before export.
 
+For bulk setup, download `/static/templates/resched-data-entry-template.xlsx` from the
+Generate page. The workbook uses separate tabs because programs, courses, teachers,
+sections, rooms, and repeat students have different fields but share IDs. ReSched
+imports all populated tabs in one operation and validates their relationships.
+
 ## Project documentation
 
 - [Implementation status](IMPLEMENTATION_STATUS.md)
 - [Deployment guide](DEPLOYMENT.md)
 - [Audit and improvement roadmap](PROJECT_AUDIT_AND_IMPROVEMENT_PLAN.md)
+- [Data entry improvement plan](DATA_ENTRY_IMPROVEMENT_PLAN.md)
 
 ## Security notes
 
