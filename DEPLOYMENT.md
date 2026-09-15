@@ -36,6 +36,17 @@ docker compose up --build -d
 
 Never commit `.env` or real credentials. Terminate TLS at a reverse proxy or managed platform and keep `SESSION_COOKIE_SECURE=true` in production.
 
+## Free preview: Render + Neon
+
+1. Create a Neon PostgreSQL project and copy its pooled connection string.
+2. In Render, create a Blueprint from this GitHub repository. Render detects `render.yaml`.
+3. Set `DATABASE_URL` to the Neon connection string, changing the scheme to `postgresql+psycopg://` when necessary.
+4. Set `ADMIN_USERNAME`, `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`.
+5. Set `ALLOWED_ORIGINS` to the final Render HTTPS URL.
+6. Deploy and verify `/api/health`, account request, approval, login, dataset save, timetable generation, and export.
+
+The free architecture is for demonstration and acceptance testing. Render free services sleep when inactive, while free database limits and backup policies can change. Upgrade compute and database backup coverage before accepting real university production data.
+
 ## GitHub workflow
 
 1. Initialize Git in the project folder if it is not already a repository.

@@ -12,7 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend ./backend
 COPY static ./static
-COPY imports ./imports
 
 USER appuser
 EXPOSE 8000
