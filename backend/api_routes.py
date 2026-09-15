@@ -111,7 +111,7 @@ def review_registration(
     user.admin_note = body.admin_note.strip() if body.admin_note else None
     user.reviewed_at = utcnow()
     if body.decision == "approved":
-        ensure_workspace(db, user.id)
+        ensure_workspace(db, user.id, seed=False)
     audit(db, f"account.{body.decision}", admin.id, user.id, note=user.admin_note)
     db.commit()
     return {"message": f"Account {body.decision}", "user": public_user(user)}

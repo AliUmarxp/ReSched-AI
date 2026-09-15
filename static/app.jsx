@@ -75,8 +75,9 @@ const API = {
   },
   async seed() {
     const response = await fetch("/api/seed", { method: "POST" });
-    if (!response.ok) throw new Error("Unable to reset seed data");
-    return response.json();
+    const result = await response.json();
+    if (!response.ok) throw new Error(apiErrorMessage(result, "Unable to reset sample data"));
+    return result;
   },
   async saveEntity(name, payload) {
     const response = await fetch(`/api/entities/${name}`, {
@@ -84,13 +85,15 @@ const API = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ payload }),
     });
-    if (!response.ok) throw new Error("Unable to save data");
-    return response.json();
+    const result = await response.json();
+    if (!response.ok) throw new Error(apiErrorMessage(result, "Unable to save data"));
+    return result;
   },
   async generate() {
     const response = await fetch("/api/generate", { method: "POST" });
-    if (!response.ok) throw new Error("Scheduler failed");
-    return response.json();
+    const result = await response.json();
+    if (!response.ok) throw new Error(apiErrorMessage(result, "Scheduler failed"));
+    return result;
   },
   async importSectionWise() {
     const response = await fetch("/api/import/section-wise", { method: "POST" });
@@ -1440,7 +1443,7 @@ function AdminRequestsPage() {
   );
 }
 
-function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionWise, exportDataset, importDataset }) {
+function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionWise, exportDataset, importDataset, auth }) {
   return (
     <div className="grid gap-5">
       <section className="panel p-5">
@@ -1462,10 +1465,10 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
             <Icon name="file-archive" />
             Section PDFs ZIP
           </a>
-          <button className="btn btn-secondary" type="button" onClick={importSectionWise} disabled={busy}>
+          {auth?.is_demo ? <button className="btn btn-secondary" type="button" onClick={importSectionWise} disabled={busy}>
             <Icon name="database-zap" />
             Import SECTION-WISE
-          </button>
+          </button> : null}
           <button className="btn btn-secondary" type="button" onClick={exportDataset}>
             <Icon name="database-backup" />
             Export Dataset
@@ -1475,10 +1478,10 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
             Import Dataset
             <input type="file" accept="application/json" className="hidden" onChange={(event) => importDataset(event.target.files[0])} />
           </label>
-          <button className="btn btn-danger" type="button" onClick={resetSeed}>
+          {auth?.is_demo ? <button className="btn btn-danger" type="button" onClick={resetSeed}>
             <Icon name="rotate-ccw" />
-            Restore Seed
-          </button>
+            Restore Demo Data
+          </button> : null}
         </div>
       </section>
 

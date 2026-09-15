@@ -27,6 +27,7 @@ def public_user(user: User) -> dict:
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "reviewed_at": user.reviewed_at.isoformat() if user.reviewed_at else None,
         "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+        "is_demo": bool(settings.enable_demo_account and user.username == settings.demo_username),
     }
 
 
@@ -47,10 +48,35 @@ def bootstrap_admin(db: Session) -> User:
     )
     db.add(admin)
     db.flush()
-    ensure_workspace(db, admin.id)
     audit(db, "account.bootstrap_admin", admin.id, admin.id)
     db.commit()
     return admin
+
+
+def bootstrap_demo(db: Session) -> User | None:
+    if not settings.enable_demo_account:
+        return None
+    existing = db.scalar(select(User).where(User.username == settings.demo_username))
+    if existing:
+        ensure_workspace(db, existing.id, seed=True)
+        return existing
+    demo = User(
+        username=settings.demo_username,
+        email=settings.demo_email,
+        password_hash=hash_password(settings.demo_password),
+        role="user",
+        status="approved",
+        full_name="Demo Registrar",
+        institution_name="Demo University",
+        designation="Registrar",
+        reviewed_at=utcnow(),
+    )
+    db.add(demo)
+    db.flush()
+    ensure_workspace(db, demo.id, seed=True)
+    audit(db, "account.bootstrap_demo", demo.id, demo.id)
+    db.commit()
+    return demo
 
 
 def find_user(db: Session, identifier: str) -> User | None:

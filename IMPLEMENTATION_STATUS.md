@@ -1,6 +1,16 @@
 # ReSched AI Implementation Status
 
-Last updated: 2026-09-15
+Last updated: 2026-09-16
+
+## Tenant onboarding and cloud persistence fix
+
+- New approved accounts now receive an empty, isolated academic workspace instead of bundled sample records.
+- Only the configured demo account can receive or restore the bundled sample dataset.
+- Regular users retain full tenant-scoped Add/Edit/Delete and JSON import/export capabilities.
+- Entity editing uses draft-friendly validation; strict room/readiness validation runs before schedule generation and full dataset import.
+- Added tenant isolation tests covering empty onboarding, demo-only seeding, CRUD, deletion, and dataset import.
+- Normalized provider PostgreSQL URLs to the Psycopg 3 dialect and disabled persistent SQLAlchemy pools on Vercel serverless functions.
+- Corrected the HTTP test-client dependency used by CI.
 
 ## Latest delivery: shared rooms and interface refinement
 

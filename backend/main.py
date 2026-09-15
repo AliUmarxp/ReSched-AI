@@ -16,7 +16,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import PageBreak, SimpleDocTemplate, Spacer, Paragraph, Table, TableStyle
 
-from .accounts import bootstrap_admin
+from .accounts import bootstrap_admin, bootstrap_demo
 from .api_routes import router as account_router
 from .config import settings
 from .database import SessionLocal, init_database
@@ -62,6 +62,7 @@ def startup() -> None:
     init_database()
     with SessionLocal() as db:
         bootstrap_admin(db)
+        bootstrap_demo(db)
 
 
 def _default_ai_profile() -> dict[str, Any]:
@@ -113,12 +114,16 @@ def get_data(db: Session = Depends(get_db), user: User = Depends(workspace_user)
 
 @app.post("/api/seed")
 def reset_seed(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    if not (settings.enable_demo_account and user.username == settings.demo_username):
+        raise HTTPException(status_code=403, detail="Bundled sample data is available only in the demo account")
     dataset, version = reset_workspace(db, user.id, user.id)
     return {"dataset": dataset, "datasetVersion": version, "latestRun": None}
 
 
 @app.post("/api/import/section-wise")
 def import_section_wise(db: Session = Depends(get_db), user: User = Depends(workspace_user)) -> dict[str, Any]:
+    if not (settings.enable_demo_account and user.username == settings.demo_username):
+        raise HTTPException(status_code=403, detail="Bundled sample import is available only in the demo account")
     section_wise_root = ROOT_DIR / "imports" / "section-wise" / "SECTION-WISE"
     if not section_wise_root.exists():
         raise HTTPException(status_code=404, detail=f"Folder not found: {section_wise_root}")

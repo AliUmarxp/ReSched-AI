@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from .constraints import CATALOG_BY_KEY, CONSTRAINT_CATALOG, default_constraint_rows
 from .database import utcnow
 from .models import AuditEvent, ConstraintSetting, EntitySet, ScheduleRun, User, Workspace
-from .seed_data import get_seed_data
+from .seed_data import build_time_slots, get_seed_data
 
 
 ENTITY_NAMES = {
@@ -37,16 +37,33 @@ def audit(db: Session, action: str, actor_id: str | None, subject_id: str | None
     )
 
 
-def ensure_workspace(db: Session, user_id: str, seed: bool = True) -> Workspace:
+def empty_dataset(institution_name: str = "") -> dict[str, Any]:
+    """Return an operational tenant shell without sample academic records."""
+    return {
+        "institution": {"name": institution_name, "portal_context": "", "note": ""},
+        "sourceInsights": {},
+        "aiProfile": {"weights": {}, "trained_runs": 0},
+        "programs": [],
+        "timeSlots": build_time_slots(),
+        "teachers": [],
+        "courses": [],
+        "sections": [],
+        "rooms": [],
+        "repeatStudents": [],
+    }
+
+
+def ensure_workspace(db: Session, user_id: str, seed: bool = False) -> Workspace:
     workspace = db.scalar(select(Workspace).where(Workspace.user_id == user_id))
     if workspace:
         return workspace
     workspace = Workspace(user_id=user_id, dataset_version=1)
     db.add(workspace)
-    if seed:
-        for name, payload in get_seed_data().items():
-            if name in ENTITY_NAMES:
-                db.add(EntitySet(user_id=user_id, name=name, payload=payload))
+    user = db.get(User, user_id)
+    initial = get_seed_data() if seed else empty_dataset(user.institution_name if user else "")
+    for name, payload in initial.items():
+        if name in ENTITY_NAMES:
+            db.add(EntitySet(user_id=user_id, name=name, payload=payload))
     for row in default_constraint_rows():
         db.add(ConstraintSetting(user_id=user_id, **row))
     db.flush()
@@ -57,7 +74,8 @@ def load_dataset(db: Session, user_id: str) -> dict[str, Any]:
     ensure_workspace(db, user_id)
     rows = db.scalars(select(EntitySet).where(EntitySet.user_id == user_id)).all()
     dataset = {row.name: row.payload for row in rows}
-    for key, value in get_seed_data().items():
+    user = db.get(User, user_id)
+    for key, value in empty_dataset(user.institution_name if user else "").items():
         dataset.setdefault(key, value)
     for course in dataset.get("courses", []):
         if not isinstance(course, dict):
@@ -78,7 +96,7 @@ def _duplicates(rows: list[dict[str, Any]]) -> list[str]:
     return sorted(key for key, count in counts.items() if key and count > 1)
 
 
-def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, str]]:
+def validate_dataset(dataset: dict[str, Any], require_schedule_ready: bool = True) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     list_entities = ["programs", "timeSlots", "teachers", "courses", "sections", "rooms", "repeatStudents"]
     for name in list_entities:
@@ -94,9 +112,9 @@ def validate_dataset(dataset: dict[str, Any]) -> list[dict[str, str]]:
     rooms = dataset.get("rooms", [])
     slots = {row.get("id") for row in dataset.get("timeSlots", []) if isinstance(row, dict)}
 
-    if not any(row.get("type") == "classroom" for row in rooms if isinstance(row, dict)):
+    if require_schedule_ready and not any(row.get("type") == "classroom" for row in rooms if isinstance(row, dict)):
         issues.append({"path": "rooms", "code": "missing_classroom", "message": "At least one classroom is required"})
-    if any(course.get("type") == "lab" for course in dataset.get("courses", []) if isinstance(course, dict)) and not any(
+    if require_schedule_ready and any(course.get("type") == "lab" for course in dataset.get("courses", []) if isinstance(course, dict)) and not any(
         row.get("type") == "lab" for row in rooms if isinstance(row, dict)
     ):
         issues.append({"path": "rooms", "code": "missing_lab", "message": "At least one lab room is required"})
@@ -147,7 +165,7 @@ def save_entity_set(db: Session, user_id: str, name: str, payload: Any, actor_id
     workspace = ensure_workspace(db, user_id)
     candidate = load_dataset(db, user_id)
     candidate[name] = payload
-    issues = validate_dataset(candidate)
+    issues = validate_dataset(candidate, require_schedule_ready=False)
     if issues:
         raise DatasetValidationError(issues)
     entity = db.scalar(select(EntitySet).where(EntitySet.user_id == user_id, EntitySet.name == name))
@@ -194,6 +212,18 @@ def reset_workspace(db: Session, user_id: str, actor_id: str) -> tuple[dict[str,
             db.add(EntitySet(user_id=user_id, name=name, payload=payload))
     workspace.dataset_version += 1
     audit(db, "dataset.reset", actor_id, user_id, dataset_version=workspace.dataset_version)
+    db.commit()
+    return load_dataset(db, user_id), workspace.dataset_version
+
+
+def clear_workspace(db: Session, user_id: str, actor_id: str) -> tuple[dict[str, Any], int]:
+    workspace = ensure_workspace(db, user_id, seed=False)
+    user = db.get(User, user_id)
+    db.execute(delete(EntitySet).where(EntitySet.user_id == user_id))
+    for name, payload in empty_dataset(user.institution_name if user else "").items():
+        db.add(EntitySet(user_id=user_id, name=name, payload=payload))
+    workspace.dataset_version += 1
+    audit(db, "dataset.cleared", actor_id, user_id, dataset_version=workspace.dataset_version)
     db.commit()
     return load_dataset(db, user_id), workspace.dataset_version
 
