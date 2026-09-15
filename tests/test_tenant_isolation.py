@@ -82,3 +82,52 @@ def test_crud_and_import_never_modify_another_tenant():
     replace_dataset(db, first.id, imported, first.id)
     assert load_dataset(db, first.id)["institution"]["name"] == "First University"
     assert load_dataset(db, second.id)["courses"] == []
+
+
+def test_existing_demo_designation_keeps_password_and_seeds_only_that_account(monkeypatch):
+    from types import SimpleNamespace
+
+    from backend import accounts
+
+    db = tenant_session()
+    demo = add_user(db, "existing-demo")
+    regular = add_user(db, "regular-account")
+    original_password_hash = demo.password_hash
+    monkeypatch.setattr(
+        accounts,
+        "settings",
+        SimpleNamespace(
+            enable_demo_account=True,
+            demo_username="existing-demo",
+            demo_email="unused@example.edu",
+            demo_password="",
+        ),
+    )
+
+    result = accounts.bootstrap_demo(db)
+
+    assert result.id == demo.id
+    assert result.password_hash == original_password_hash
+    assert len(load_dataset(db, demo.id)["courses"]) > 0
+    assert load_dataset(db, regular.id)["courses"] == []
+
+
+def test_missing_demo_is_not_created_without_an_explicit_password(monkeypatch):
+    from types import SimpleNamespace
+
+    from backend import accounts
+
+    db = tenant_session()
+    monkeypatch.setattr(
+        accounts,
+        "settings",
+        SimpleNamespace(
+            enable_demo_account=True,
+            demo_username="missing-demo",
+            demo_email="missing@example.edu",
+            demo_password="",
+        ),
+    )
+
+    assert accounts.bootstrap_demo(db) is None
+    assert db.query(User).count() == 0

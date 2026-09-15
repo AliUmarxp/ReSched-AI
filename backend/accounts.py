@@ -60,6 +60,11 @@ def bootstrap_demo(db: Session) -> User | None:
     if existing:
         ensure_workspace(db, existing.id, seed=True)
         return existing
+    # A deployment can designate an already-existing seeded account as the demo
+    # without knowing or replacing its password. Creating a brand-new demo account,
+    # however, always requires an explicit password from the secret manager.
+    if not settings.demo_password:
+        return None
     demo = User(
         username=settings.demo_username,
         email=settings.demo_email,

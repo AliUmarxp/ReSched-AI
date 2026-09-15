@@ -64,7 +64,13 @@ For production, use PostgreSQL, HTTPS, secure environment secrets, regular backu
 
 ### Free online demo
 
-The recommended no-cost preview architecture is a Render Free web service connected to a Neon Free PostgreSQL database. SQLite is intended only for local development because a free web service filesystem is ephemeral. Institution records, account data, constraints, and schedule runs are stored in PostgreSQL through `DATABASE_URL`.
+The current no-cost preview architecture is Vercel connected to a Neon PostgreSQL database. SQLite is intended only for local development because serverless filesystems are not durable application storage. Institution records, account data, constraints, and schedule runs are stored in PostgreSQL through `DATABASE_URL`.
+
+For a single sample-data account, set `ENABLE_DEMO_ACCOUNT=true` and point
+`DEMO_USERNAME` at that account. An existing account keeps its current password.
+Leave this disabled for normal deployments; every approved non-demo account starts
+with an empty, isolated institutional workspace. `DEMO_PASSWORD` is only required
+when the application must create a missing demo account automatically.
 
 ## API and exports
 

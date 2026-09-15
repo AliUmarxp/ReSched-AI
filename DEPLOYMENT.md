@@ -36,16 +36,17 @@ docker compose up --build -d
 
 Never commit `.env` or real credentials. Terminate TLS at a reverse proxy or managed platform and keep `SESSION_COOKIE_SECURE=true` in production.
 
-## Free preview: Render + Neon
+## Free preview: Vercel + Neon
 
 1. Create a Neon PostgreSQL project and copy its pooled connection string.
-2. In Render, create a Blueprint from this GitHub repository. Render detects `render.yaml`.
-3. Set `DATABASE_URL` to the Neon connection string, changing the scheme to `postgresql+psycopg://` when necessary.
-4. Set `ADMIN_USERNAME`, `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`.
-5. Set `ALLOWED_ORIGINS` to the final Render HTTPS URL.
-6. Deploy and verify `/api/health`, account request, approval, login, dataset save, timetable generation, and export.
+2. Import this GitHub repository into Vercel and connect the Neon storage integration to the project.
+3. Confirm that the integration exposes `DATABASE_URL` to Production and Preview. Standard `postgres://` and `postgresql://` provider URLs are normalized by the application to Psycopg 3.
+4. Set `APP_ENV=production`, `SESSION_COOKIE_SECURE=true`, a unique 32+ character `APP_SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_EMAIL`, and a strong `ADMIN_PASSWORD`.
+5. Set `ALLOWED_ORIGINS` to the final Vercel HTTPS domain.
+6. To designate one existing sample-data account as the demo, set `ENABLE_DEMO_ACCOUNT=true` and `DEMO_USERNAME` to that account. Its password is not replaced. Set `DEMO_PASSWORD` only if the app must create a missing demo account.
+7. Deploy and verify `/api/health`, account request, approval, login, isolated dataset save, timetable generation, import, and export.
 
-The free architecture is for demonstration and acceptance testing. Render free services sleep when inactive, while free database limits and backup policies can change. Upgrade compute and database backup coverage before accepting real university production data.
+The free architecture is for demonstration and acceptance testing. Provider quotas and backup policies can change. Upgrade compute and database backup coverage before accepting real university production data.
 
 ## GitHub workflow
 

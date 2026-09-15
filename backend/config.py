@@ -77,8 +77,8 @@ def load_settings() -> Settings:
             raise RuntimeError("ADMIN_PASSWORD must be changed in production")
         if not settings.session_cookie_secure:
             raise RuntimeError("SESSION_COOKIE_SECURE must be true in production")
-        if settings.enable_demo_account and len(settings.demo_password) < 10:
-            raise RuntimeError("DEMO_PASSWORD must contain at least 10 characters when the demo account is enabled")
+        if settings.demo_password and len(settings.demo_password) < 10:
+            raise RuntimeError("DEMO_PASSWORD must contain at least 10 characters when provided")
     return settings
 
 
