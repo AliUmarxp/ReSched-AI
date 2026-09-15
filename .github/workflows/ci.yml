@@ -16,4 +16,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m compileall -q backend
-      - run: pytest -q
+      - name: Run tests
+        env:
+          PYTHONPATH: .
+        run: python -m pytest -q
