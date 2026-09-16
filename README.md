@@ -89,6 +89,10 @@ Generate page. The workbook uses separate tabs because programs, courses, teache
 sections, rooms, and repeat students have different fields but share IDs. ReSched
 imports all populated tabs in one operation and validates their relationships.
 
+For presentations, the Generate page also provides a complete fictional Northbridge
+University dataset with linked programs, courses, faculty, sections, rooms, labs, and
+repeat-student cases. Importing it replaces only the signed-in user's workspace data.
+
 ## Project documentation
 
 - [Implementation status](IMPLEMENTATION_STATUS.md)

@@ -250,7 +250,7 @@ async function parseExcelDataset(file) {
   const read = (sheetName) => {
     const actual = workbook.SheetNames.find((name) => name.toLowerCase() === sheetName.toLowerCase());
     if (!actual) return null;
-    return window.XLSX.utils.sheet_to_json(workbook.Sheets[actual], { defval: "", raw: true }).map(workbookRow);
+    return window.XLSX.utils.sheet_to_json(workbook.Sheets[actual], { defval: "", raw: true, range: 4 }).map(workbookRow);
   };
   const cleanRows = (rows) => (rows || []).filter((row) => Object.values(row).some((value) => String(value).trim()));
   const dataset = {};
@@ -534,7 +534,6 @@ function App() {
         {page}
       </main>
 
-      {auth?.role === "user" ? <ExplanationPanel entry={selectedEntry} /> : null}
     </div>
   );
 }
@@ -1659,6 +1658,10 @@ function GeneratePage({ data, run, busy, runScheduler, resetSeed, importSectionW
             <Icon name="sheet" />
             Download Excel Template
           </a>
+          <a className="btn btn-secondary" href="/static/templates/resched-demo-university-data.xlsx" download>
+            <Icon name="database" />
+            Download Complete Demo Data
+          </a>
           <label className="btn btn-secondary cursor-pointer">
             <Icon name="upload" />
             Import Excel or JSON
@@ -2081,52 +2084,6 @@ function AiEvidencePanel({ evidence }) {
         ))}
       </div>
     </section>
-  );
-}
-
-function ExplanationPanel({ entry }) {
-  return (
-    <aside className="hidden w-72 shrink-0 border-l border-slate-200 bg-white p-5 2xl:block">
-      <div className="sticky top-5">
-        <div className="flex items-center gap-2">
-          <Icon name="sparkles" className="text-teal-700" />
-          <h2 className="text-lg font-black">Placement Details</h2>
-        </div>
-        {entry ? (
-          <div className="mt-5">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <div className="text-xs font-black uppercase text-slate-500">{entry.section_name}</div>
-              <div className="mt-1 text-xl font-black leading-tight">{entry.course_name}</div>
-              <div className="mt-3 grid gap-2 text-sm text-slate-700">
-                <InfoRow label="Teacher" value={entry.teacher_name} />
-                <InfoRow label="Room" value={entry.room_name} />
-                <InfoRow label="Time" value={`${entry.day}, ${entry.start_time} - ${entry.end_time}`} />
-                <InfoRow label="Quality Score" value={entry.soft_score} />
-              </div>
-            </div>
-            <div className="mt-4 grid gap-2">
-              {entry.explanation.map((reason) => (
-                <div key={reason} className="flex gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700">
-                  <Icon name="check-circle-2" className="mt-0.5 shrink-0 text-emerald-700" />
-                  <span>{reason}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Select a class slot.</div>
-        )}
-      </div>
-    </aside>
-  );
-}
-
-function InfoRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <span className="font-bold text-slate-500">{label}</span>
-      <span className="text-right font-black text-ink">{value}</span>
-    </div>
   );
 }
 
